@@ -12,8 +12,9 @@ export function usePlaybackEngine() {
 
   // Find the video item that should be visible at the current time
   const visibleVideoItem = project?.timeline.tracks
-    .find(t => t.type === 'video')
-    ?.items.find(i => 
+    .filter(t => t.type === 'video')
+    .flatMap(t => t.items)
+    .find(i => 
       currentTime >= i.startTime && currentTime <= (i.startTime + i.duration)
     ) as VideoItem | undefined;
 

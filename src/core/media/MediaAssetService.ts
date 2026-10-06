@@ -10,7 +10,7 @@ export interface PickedMedia {
 export class MediaAssetService {
   static async pickVideoAsset(): Promise<PickedMedia | null> {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      mediaTypes: ['videos', 'images'],
       allowsEditing: false,
       quality: 1,
     });
@@ -19,7 +19,7 @@ export class MediaAssetService {
       const asset = result.assets[0];
       return {
         uri: asset.uri,
-        type: 'video',
+        type: asset.type === 'image' ? 'image' : 'video',
         duration: asset.duration ?? undefined,
       };
     }

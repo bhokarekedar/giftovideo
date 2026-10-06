@@ -5,7 +5,6 @@ import { useEditorStore } from '../../core/store/editorStore';
 import { TrackLane } from './TrackLane';
 import { Playhead } from './Playhead';
 
-export const PIXELS_PER_SECOND = 50;
 
 export function Timeline() {
   const project = useEditorStore(state => state.project);

@@ -1,3 +1,4 @@
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { theme } from '../../core/theme';
@@ -8,7 +9,7 @@ import { EditorCanvas } from '../../features/canvas/EditorCanvas';
 import { Timeline } from '../../features/timeline/Timeline';
 import { PlaybackControls } from '../../features/timeline/PlaybackControls';
 import { TextPropertyPanel } from '../../features/editor/TextPropertyPanel';
-import { TextItem } from '../../core/models/Project';
+import { TextItem, VideoItem } from '../../core/models/Project';
 
 export default function EditorScreen() {
   const { id } = useLocalSearchParams();
@@ -16,11 +17,63 @@ export default function EditorScreen() {
   const addTrack = useEditorStore(state => state.addTrack);
   const currentTime = useEditorStore(state => state.currentTime);
 
+  React.useEffect(() => {
+    const state = useEditorStore.getState();
+    if (!state.project) {
+      state.loadProject({
+        id: id as string,
+        version: 1,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        canvas: {
+          width: 1080,
+          height: 1920,
+          aspectRatio: '9:16',
+        },
+        timeline: {
+          tracks: [],
+          duration: 30000,
+        },
+        exportSettings: {
+          presetId: '1080p',
+          resolution: { width: 1080, height: 1920 },
+          fps: 30,
+        },
+        metadata: {
+          name: 'New Project',
+        }
+      });
+    }
+  }, [id]);
+
   const handleAddVideo = async () => {
     const media = await MediaAssetService.pickVideoAsset();
     if (media) {
       addTrack('video');
       console.log('Picked Video:', media.uri);
+      
+      setTimeout(() => {
+        const state = useEditorStore.getState();
+        const videoTracks = state.project?.timeline.tracks.filter(t => t.type === 'video') || [];
+        const newTrack = videoTracks[videoTracks.length - 1];
+        if (newTrack) {
+          const newItem: VideoItem = {
+            id: `video_${Date.now()}`,
+            type: 'video',
+            uri: media.uri,
+            startTime: currentTime,
+            duration: media.duration || 5000,
+            sourceStartTime: 0,
+            volume: 1,
+            position: { x: 0.5, y: 0.5 },
+            scale: 1,
+            rotation: 0,
+            opacity: 1,
+          };
+          state.addItemToTrack(newTrack.id, newItem);
+          state.selectItem(newItem.id);
+        }
+      }, 10);
     }
   };
 
@@ -44,7 +97,7 @@ export default function EditorScreen() {
         const newItem: TextItem = {
           id: `text_${Date.now()}`,
           type: 'text',
-          text: 'Double tap to edit',
+          text: 'Tap to select & edit below',
           fontFamily: 'System',
           fontSize: 32,
           fontWeight: '700',

@@ -1,25 +1,47 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, withTiming, useSharedValue, runOnJS } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { theme } from '../../core/theme';
 import { useEditorStore } from '../../core/store/editorStore';
-import { PIXELS_PER_SECOND } from './Timeline';
+import { PIXELS_PER_SECOND } from './constants';
 
 export function Playhead() {
   const currentTime = useEditorStore(state => state.currentTime);
 
+  const setPlayhead = useEditorStore(state => state.setPlayhead);
+  const isScrubbing = useSharedValue(false);
+
   const animatedStyle = useAnimatedStyle(() => {
+    // Only animate to currentTime if not scrubbing
     const leftPos = (currentTime / 1000) * PIXELS_PER_SECOND;
     return {
-      left: withTiming(leftPos, { duration: 100 }),
+      left: withTiming(leftPos, { duration: isScrubbing.value ? 0 : 100 }),
     };
   });
 
+  const startScrubTime = useSharedValue(0);
+
+  const pan = Gesture.Pan()
+    .onBegin(() => {
+      isScrubbing.value = true;
+      startScrubTime.value = useEditorStore.getState().currentTime;
+    })
+    .onChange((e) => {
+      const newTime = Math.max(0, startScrubTime.value + (e.translationX / PIXELS_PER_SECOND) * 1000);
+      runOnJS(setPlayhead)(newTime);
+    })
+    .onFinalize(() => {
+      isScrubbing.value = false;
+    });
+
   return (
-    <Animated.View style={[styles.container, animatedStyle]}>
-      <View style={styles.head} />
-      <View style={styles.line} />
-    </Animated.View>
+    <GestureDetector gesture={pan}>
+      <Animated.View style={[styles.container, animatedStyle]}>
+        <View style={styles.head} />
+        <View style={styles.line} />
+      </Animated.View>
+    </GestureDetector>
   );
 }
 

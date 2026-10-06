@@ -1,11 +1,11 @@
 import React from 'react';
-import { StyleSheet, Text } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, runOnJS, withSpring } from 'react-native-reanimated';
 import { theme } from '../../core/theme';
 import { TrackItem } from '../../core/models/Project';
 import { useEditorStore } from '../../core/store/editorStore';
-import { PIXELS_PER_SECOND } from './Timeline';
+import { PIXELS_PER_SECOND } from './constants';
 
 interface TrackItemViewProps {
   trackId: string;
@@ -21,9 +21,10 @@ export function TrackItemView({ trackId, item }: TrackItemViewProps) {
   
   // Calculate initial position based on ms
   const initialLeft = (item.startTime / 1000) * PIXELS_PER_SECOND;
-  const width = (item.duration / 1000) * PIXELS_PER_SECOND;
+  const baseWidth = (item.duration / 1000) * PIXELS_PER_SECOND;
 
   const translateX = useSharedValue(0);
+  const resizeWidth = useSharedValue(0);
   const isDragging = useSharedValue(false);
 
   const panGesture = Gesture.Pan()
@@ -42,9 +43,24 @@ export function TrackItemView({ trackId, item }: TrackItemViewProps) {
       translateX.value = withSpring(0);
     });
 
+  const resizeGesture = Gesture.Pan()
+    .onBegin(() => {
+      runOnJS(selectItem)(item.id);
+    })
+    .onUpdate((e) => {
+      resizeWidth.value = e.translationX;
+    })
+    .onEnd(() => {
+      const msDelta = (resizeWidth.value / PIXELS_PER_SECOND) * 1000;
+      const newDuration = Math.max(500, item.duration + msDelta); // min 0.5s
+      runOnJS(updateItem)(trackId, item.id, { duration: newDuration });
+      resizeWidth.value = 0;
+    });
+
   const animatedStyle = useAnimatedStyle(() => {
     return {
       transform: [{ translateX: translateX.value }],
+      width: Math.max(20, baseWidth + resizeWidth.value),
       zIndex: isDragging.value ? 10 : 1,
       opacity: isDragging.value ? 0.8 : 1,
     };
@@ -67,7 +83,6 @@ export function TrackItemView({ trackId, item }: TrackItemViewProps) {
           animatedStyle, 
           { 
             left: initialLeft, 
-            width, 
             backgroundColor: getBackgroundColor(),
             borderColor: isSelected ? '#FFF' : 'transparent',
             borderWidth: isSelected ? 2 : 0,
@@ -75,6 +90,12 @@ export function TrackItemView({ trackId, item }: TrackItemViewProps) {
         ]}
       >
         <Text style={styles.label} numberOfLines={1}>{item.type}</Text>
+        
+        {isSelected && (
+          <GestureDetector gesture={resizeGesture}>
+            <View style={styles.rightHandle} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} />
+          </GestureDetector>
+        )}
       </Animated.View>
     </GestureDetector>
   );
@@ -92,5 +113,15 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: theme.typography.sizes.xs,
     fontWeight: theme.typography.weights.bold,
+  },
+  rightHandle: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 12,
+    backgroundColor: 'rgba(255,255,255,0.5)',
+    borderTopRightRadius: theme.radius.sm,
+    borderBottomRightRadius: theme.radius.sm,
   }
 });

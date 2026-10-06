@@ -1,6 +1,6 @@
-import React, { useRef, useEffect } from 'react';
-import { View, StyleSheet, Dimensions, Text } from 'react-native';
-import { Video, ResizeMode } from 'expo-av';
+import React, { useEffect } from 'react';
+import { View, StyleSheet, Dimensions, Text, Image } from 'react-native';
+import { VideoView, useVideoPlayer } from 'expo-video';
 import { theme } from '../../core/theme';
 import { useEditorStore } from '../../core/store/editorStore';
 import { usePlaybackEngine } from '../../core/playback/usePlaybackEngine';
@@ -11,7 +11,9 @@ export function EditorCanvas() {
   const currentTime = useEditorStore(state => state.currentTime);
   const { isPlaying, visibleVideoItem } = usePlaybackEngine();
   
-  const videoRef = useRef<Video>(null);
+  const player = useVideoPlayer(visibleVideoItem?.uri || null, player => {
+    player.muted = true;
+  });
 
   const aspectRatio = project?.canvas?.aspectRatio || '9:16';
   const [ratioW, ratioH] = aspectRatio.split(':').map(Number);
@@ -26,33 +28,39 @@ export function EditorCanvas() {
 
   // Sync video position with currentTime
   useEffect(() => {
-    if (visibleVideoItem && videoRef.current) {
+    if (visibleVideoItem && player) {
       if (!isPlaying) {
         const relativeTime = currentTime - visibleVideoItem.startTime;
-        videoRef.current.setPositionAsync(Math.max(0, relativeTime));
+        player.currentTime = Math.max(0, relativeTime) / 1000;
       } else {
-        videoRef.current.playAsync();
+        player.play();
       }
     }
-  }, [currentTime, isPlaying, visibleVideoItem]);
+  }, [currentTime, isPlaying, visibleVideoItem, player]);
 
   useEffect(() => {
-    if (!isPlaying && videoRef.current) {
-      videoRef.current.pauseAsync();
+    if (!isPlaying && player) {
+      player.pause();
     }
-  }, [isPlaying]);
+  }, [isPlaying, player]);
 
   return (
     <View style={styles.container}>
       <View style={[styles.canvasBox, { width: canvasWidth, height: canvasHeight }]}>
         {visibleVideoItem ? (
-          <Video
-            ref={videoRef}
-            source={{ uri: visibleVideoItem.uri }}
-            style={StyleSheet.absoluteFill}
-            resizeMode={ResizeMode.CONTAIN}
-            isMuted={true}
-          />
+          visibleVideoItem.uri.toLowerCase().endsWith('.gif') ? (
+            <Image 
+              source={{ uri: visibleVideoItem.uri }} 
+              style={StyleSheet.absoluteFill} 
+              resizeMode="contain" 
+            />
+          ) : (
+            <VideoView
+              player={player}
+              style={StyleSheet.absoluteFill}
+              contentFit="contain"
+            />
+          )
         ) : (
           <Text style={styles.placeholder}>No Video</Text>
         )}
