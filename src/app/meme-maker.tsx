@@ -1,31 +1,210 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Image, TextInput, KeyboardAvoidingView, Platform, ScrollView, Modal } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Image, TextInput, KeyboardAvoidingView, Platform, ScrollView, Modal, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { captureRef } from 'react-native-view-shot';
+import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system';
 import { useRouter, Stack } from 'expo-router';
+import * as Font from 'expo-font';
+import * as DocumentPicker from 'expo-document-picker';
+
+let MediaLibrary: any = null;
+let FFmpegKit: any = null;
+let ReturnCode: any = null;
+
+try {
+  MediaLibrary = require('expo-media-library');
+  const ffmpeg = require('ffmpeg-kit-react-native');
+  FFmpegKit = ffmpeg.FFmpegKit;
+  ReturnCode = ffmpeg.ReturnCode;
+} catch (e) {
+  console.log('Native video modules disabled. Running in Expo Go fallback mode.');
+}
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useSharedValue, useAnimatedStyle, runOnJS } from 'react-native-reanimated';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { theme } from '../core/theme';
 import { MediaAssetService } from '../core/media/MediaAssetService';
+import ColorPickerModal from '../components/ColorPickerModal';
 
 const { width } = Dimensions.get('window');
 const CANVAS_WIDTH = width * 0.55;
 const CANVAS_HEIGHT = CANVAS_WIDTH * (16 / 9);
 
+const STICKER_PRESETS = [
+  { id: 'st1', text: 'TOP TEXT', color: '#FFFFFF', bg: 'transparent', size: 36, font: 'Anton' },
+  { id: 'st2', text: 'BREAKING NEWS', color: '#FFFFFF', bg: '#EF4444', size: 28, font: 'Bebas Neue' },
+  { id: 'st3', text: 'POV:', color: '#FFFFFF', bg: 'transparent', size: 32, font: 'System' },
+  { id: 'st4', text: 'WAIT FOR IT', color: '#FACC15', bg: '#000000', size: 28, font: 'Anton' },
+  { id: 'st5', text: '💬 Who said that?', color: '#000000', bg: '#FFFFFF', size: 20, font: 'Comic Neue' },
+  { id: 'st6', text: 'v i b e s', color: '#FFFFFF', bg: '#A855F7', size: 24, font: 'serif' },
+  { id: 'st7', text: '"Literally me"', color: '#FFFFFF', bg: 'transparent', size: 26, font: 'System' },
+  { id: 'st8', text: 'hello.', color: '#000000', bg: '#F8FAFC', size: 18, font: 'monospace' },
+  { id: 'st9', text: '⚠️ CAUTION', color: '#000000', bg: '#FACC15', size: 24, font: 'Bebas Neue' },
+  { id: 'st10', text: '10/10 WOULD RECOMMEND', color: '#FFFFFF', bg: '#22C55E', size: 20, font: 'Bebas Neue' },
+  { id: 'st11', text: 'Verified ✅', color: '#FFFFFF', bg: '#38BDF8', size: 22, font: 'System' },
+  { id: 'st12', text: 'darkness', color: '#FFFFFF', bg: '#0F172A', size: 24, font: 'monospace' },
+];
+
 export default function MemeMakerScreen() {
   const router = useRouter();
   const [gifUri, setGifUri] = useState<string | null>(null);
+  
+  // Custom Fonts State
+  const [fontsLoaded, setFontsLoaded] = useState(false);
+  const [availableFonts, setAvailableFonts] = useState(['System', 'serif', 'monospace', 'Anton', 'Bebas Neue', 'Comic Neue']);
+
+  useEffect(() => {
+    async function loadPredefinedFonts() {
+      try {
+        await Font.loadAsync({
+          'Anton': require('../../assets/fonts/Anton-Regular.ttf'),
+          'Bebas Neue': require('../../assets/fonts/BebasNeue-Regular.ttf'),
+          'Comic Neue': require('../../assets/fonts/ComicNeue-Bold.ttf'),
+        });
+        setFontsLoaded(true);
+      } catch (e) {
+        console.warn('Error loading preset fonts', e);
+        setFontsLoaded(true);
+      }
+    }
+    loadPredefinedFonts();
+  }, []);
+
+  const handleUploadFont = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: ['*/*'] });
+      if (result.canceled || !result.assets || result.assets.length === 0) return;
+      
+      const file = result.assets[0];
+      let fontName = file.name.split('.')[0];
+      // Keep it unique if needed, but simple name is fine for now
+      
+      await Font.loadAsync({
+        [fontName]: { uri: file.uri }
+      });
+      
+      setAvailableFonts(prev => [...prev, fontName]);
+      setEditorFont(fontName);
+      if (isEditingText) {
+         updateActiveText({ font: fontName });
+      }
+      Alert.alert('Font Loaded', `Custom font "${fontName}" applied!`);
+    } catch (e) {
+      console.error(e);
+      Alert.alert('Error', 'Failed to load custom font.');
+    }
+  };
   const [duration, setDuration] = useState<number>(5);
   const [durationStr, setDurationStr] = useState<string>('5');
   const [background, setBackground] = useState<'blur' | 'solid' | 'custom'>('blur');
   const [customBgUri, setCustomBgUri] = useState<string | null>(null);
   const [isBgModalVisible, setIsBgModalVisible] = useState(false);
+  const [hideMediaLayers, setHideMediaLayers] = useState(false);
+  const [showAllStickers, setShowAllStickers] = useState(false);
   
+  const canvasRef = useRef<View>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSave = async () => {
+    try {
+      setIsSaving(true);
+
+      // EXPO GO FALLBACK (Save as image via sharing)
+      if (!MediaLibrary || !FFmpegKit) {
+        Alert.alert(
+          'Expo Go Mode',
+          'Video generation requires a native build. Would you like to share an image snapshot instead?',
+          [
+            { text: 'Cancel', style: 'cancel', onPress: () => setIsSaving(false) },
+            { 
+              text: 'Share Image', 
+              onPress: async () => {
+                try {
+                  if (!canvasRef.current) return;
+                  const uri = await captureRef(canvasRef, { format: 'png', quality: 1 });
+                  await Sharing.shareAsync(uri, { dialogTitle: 'Share Meme Snapshot', mimeType: 'image/png' });
+                } catch (e) {
+                  console.error(e);
+                  Alert.alert('Error', 'Failed to share snapshot.');
+                } finally {
+                  setIsSaving(false);
+                }
+              }
+            }
+          ]
+        );
+        return;
+      }
+
+      // NATIVE BUILD (Generate Video)
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Please grant permission to save videos to your library.');
+        setIsSaving(false);
+        return;
+      }
+
+      if (!canvasRef.current || !gifUri) return;
+
+      // 1. Hide media layers to capture ONLY the text overlays
+      setHideMediaLayers(true);
+      
+      // Give React time to render the hidden state
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      const overlayUri = await captureRef(canvasRef, {
+        format: 'png',
+        quality: 1,
+      });
+
+      // Show media layers again
+      setHideMediaLayers(false);
+
+      const outputUri = `${FileSystem.cacheDirectory}meme_${Date.now()}.mp4`;
+      const cleanGifUri = gifUri.replace('file://', '');
+      const cleanOverlayUri = overlayUri.replace('file://', '');
+      const cleanOutputUri = outputUri.replace('file://', '');
+
+      const durationSec = duration || 5;
+
+      // Filter graph for blurring the background and placing gif, then text
+      let filterComplex = '';
+      if (background === 'blur') {
+        filterComplex = `[0:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,boxblur=20:20[bg];[0:v]scale=720:1280:force_original_aspect_ratio=decrease[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2[vid];[1:v]scale=720:1280[ovrl];[vid][ovrl]overlay=0:0`;
+      } else {
+        filterComplex = `[0:v]scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2:color=black[bg];[1:v]scale=720:1280[ovrl];[bg][ovrl]overlay=0:0`;
+      }
+
+      // Loop the GIF until the specified duration
+      const ffmpegCommand = `-stream_loop -1 -i "${cleanGifUri}" -i "${cleanOverlayUri}" -filter_complex "${filterComplex}" -t ${durationSec} -c:v mpeg4 -q:v 2 -y "${cleanOutputUri}"`;
+
+      const session = await FFmpegKit.execute(ffmpegCommand);
+      const returnCode = await session.getReturnCode();
+
+      if (ReturnCode.isSuccess(returnCode)) {
+        await MediaLibrary.saveToLibraryAsync(outputUri);
+        Alert.alert('Success!', 'Video saved to your gallery!');
+      } else {
+        const logs = await session.getLogs();
+        console.error("FFmpeg error:", logs);
+        Alert.alert('Error', 'Failed to generate video. Make sure you are running a custom Dev Client, not Expo Go.');
+      }
+    } catch (error) {
+      console.error(error);
+      Alert.alert('Error', 'Failed to save meme.');
+    } finally {
+      setIsSaving(false);
+      setHideMediaLayers(false);
+    }
+  };
+
   // Text Editor State (Multiple Texts)
   const [texts, setTexts] = useState<any[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isEditingText, setIsEditingText] = useState(false);
   const [activeTool, setActiveTool] = useState<'none' | 'color' | 'bg' | 'size' | 'font'>('none');
+  const [pickerTarget, setPickerTarget] = useState<'color' | 'bg' | null>(null);
 
   // Currently editing values (mirrored to active text)
   const [editorText, setEditorText] = useState('');
@@ -124,48 +303,59 @@ export default function MemeMakerScreen() {
           headerTintColor: '#F8FAFC',
           headerShadowVisible: false,
           headerRight: () => (
-            <TouchableOpacity style={styles.navSaveBtn}>
-              <Text style={styles.navSaveBtnText}>Save</Text>
+            <TouchableOpacity 
+              style={[styles.navSaveBtn, isSaving && { opacity: 0.5 }]} 
+              onPress={handleSave}
+              disabled={isSaving}
+            >
+              <Text style={styles.navSaveBtnText}>{isSaving ? 'Saving...' : 'Save'}</Text>
             </TouchableOpacity>
           )
         }} 
       />
-      
-      <View style={styles.content}>
+      <KeyboardAvoidingView 
+        style={styles.content}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 90}
+      >
         <View style={styles.canvasContainer}>
-          <View style={styles.canvas}>
-            {/* Background Layer */}
-            {background === 'blur' ? (
-              <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: '#0F172A', overflow: 'hidden' }}>
-                <Image 
-                  source={{ uri: gifUri }} 
-                  style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, width: '100%', height: '100%', opacity: 0.35, transform: [{ scale: 12 }] }} 
-                  resizeMode="cover" 
-                />
-              </View>
-            ) : background === 'custom' && customBgUri ? (
-              <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: '#0F172A', overflow: 'hidden' }}>
-                <Image 
-                  source={{ uri: customBgUri }} 
-                  style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, width: '100%', height: '100%' }} 
-                  resizeMode="cover" 
-                />
-              </View>
-            ) : (
-              <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: '#0F172A' }} />
+          <View style={styles.canvas} ref={canvasRef} collapsable={false}>
+            {!hideMediaLayers && (
+              <>
+                {/* Background Layer */}
+                {background === 'blur' ? (
+                  <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: '#0F172A', overflow: 'hidden' }}>
+                    <Image 
+                      source={{ uri: gifUri }} 
+                      style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, width: '100%', height: '100%', opacity: 0.35, transform: [{ scale: 12 }] }} 
+                      resizeMode="cover" 
+                    />
+                  </View>
+                ) : background === 'custom' && customBgUri ? (
+                  <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: '#0F172A', overflow: 'hidden' }}>
+                    <Image 
+                      source={{ uri: customBgUri }} 
+                      style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, width: '100%', height: '100%' }} 
+                      resizeMode="cover" 
+                    />
+                  </View>
+                ) : (
+                  <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: '#0F172A' }} />
+                )}
+                
+                {/* Foreground Layer (Transformable GIF) */}
+                <GestureDetector gesture={composedGesture}>
+                  <Animated.Image 
+                    source={{ uri: gifUri }} 
+                    style={[
+                      { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, width: '100%', height: '100%' }, 
+                      animatedStyle
+                    ]} 
+                    resizeMode="contain" 
+                  />
+                </GestureDetector>
+              </>
             )}
-            
-            {/* Foreground Layer (Transformable GIF) */}
-            <GestureDetector gesture={composedGesture}>
-              <Animated.Image 
-                source={{ uri: gifUri }} 
-                style={[
-                  { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, width: '100%', height: '100%' }, 
-                  animatedStyle
-                ]} 
-                resizeMode="contain" 
-              />
-            </GestureDetector>
 
             {/* Render Multiple Text Layers */}
             {texts.map(textItem => (
@@ -217,13 +407,13 @@ export default function MemeMakerScreen() {
             <Text style={[styles.toolbarPrimaryBtnText, { textAlign: 'center' }]}>Add Text</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </KeyboardAvoidingView>
 
       {/* Text Editor Overlay */}
       {isEditingText && (
         <Modal transparent animationType="fade" visible={isEditingText}>
           <KeyboardAvoidingView 
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={styles.editorOverlay}
           >
             <TouchableOpacity 
@@ -245,6 +435,62 @@ export default function MemeMakerScreen() {
                 }}>
                   <Text style={styles.editorDone}>Done</Text>
                 </TouchableOpacity>
+              </View>
+
+              {/* Stickers Section */}
+              <View style={styles.stickersSection}>
+                <View style={styles.stickersHeader}>
+                  <Text style={styles.stickersTitle}>Presets & Stickers</Text>
+                  <TouchableOpacity onPress={() => setShowAllStickers(!showAllStickers)}>
+                    <Text style={styles.stickersViewAll}>{showAllStickers ? 'Show less' : 'View all'}</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {showAllStickers ? (
+                  <ScrollView style={{ maxHeight: 160 }} showsVerticalScrollIndicator={false}>
+                    <View style={styles.stickersGrid}>
+                      {STICKER_PRESETS.map(preset => (
+                        <TouchableOpacity 
+                          key={preset.id} 
+                          style={styles.stickerCardGrid}
+                          onPress={() => {
+                            setEditorText(preset.text);
+                            setEditorColor(preset.color);
+                            setEditorBg(preset.bg);
+                            setEditorSize(preset.size);
+                            setEditorFont(preset.font);
+                            updateActiveText({ text: preset.text, color: preset.color, bg: preset.bg, size: preset.size, font: preset.font });
+                          }}
+                        >
+                          <View style={[styles.stickerPreview, { backgroundColor: preset.bg === 'transparent' ? '#334155' : preset.bg }]}>
+                             <Text style={{ color: preset.color, fontSize: 14, fontWeight: preset.font === 'System' ? 'bold' : 'normal', fontFamily: preset.font !== 'System' && preset.font !== 'serif' && preset.font !== 'monospace' ? preset.font : undefined, textAlign: 'center' }} numberOfLines={1}>{preset.text}</Text>
+                          </View>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </ScrollView>
+                ) : (
+                  <View style={styles.stickersRow}>
+                    {STICKER_PRESETS.slice(0, 2).map(preset => (
+                      <TouchableOpacity 
+                        key={preset.id} 
+                        style={[styles.stickerCard, { flex: 1 }]}
+                        onPress={() => {
+                          setEditorText(preset.text);
+                          setEditorColor(preset.color);
+                          setEditorBg(preset.bg);
+                          setEditorSize(preset.size);
+                          setEditorFont(preset.font);
+                          updateActiveText({ text: preset.text, color: preset.color, bg: preset.bg, size: preset.size, font: preset.font });
+                        }}
+                      >
+                        <View style={[styles.stickerPreview, { backgroundColor: preset.bg === 'transparent' ? '#334155' : preset.bg }]}>
+                           <Text style={{ color: preset.color, fontSize: 14, fontWeight: 'bold', textAlign: 'center' }} numberOfLines={1}>{preset.text}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
               </View>
               
               <View style={styles.editorTools}>
@@ -277,53 +523,106 @@ export default function MemeMakerScreen() {
                     </TouchableOpacity>
                     
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
-                      {activeTool === 'color' && ['#FFFFFF', '#000000', '#EF4444', '#EAB308', '#22C55E', '#3B82F6'].map(color => (
-                        <TouchableOpacity 
-                          key={color} 
-                          onPress={() => { setEditorColor(color); updateActiveText({ color }); }}
-                          style={[styles.colorSwatch, { backgroundColor: color, borderColor: editorColor === color ? '#38BDF8' : 'transparent' }]} 
-                        />
-                      ))}
+                      {activeTool === 'color' && (
+                        <>
+                          <TouchableOpacity 
+                            onPress={() => setPickerTarget('color')}
+                            style={[styles.colorSwatch, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#0F172A', borderColor: '#334155' }]} 
+                          >
+                            <Ionicons name="color-filter-outline" size={18} color="#F8FAFC" />
+                          </TouchableOpacity>
+                          {['#FFFFFF', '#000000', '#FACC15', '#EF4444', '#38BDF8', '#22C55E', '#A855F7', '#F43F5E'].map(color => (
+                            <TouchableOpacity 
+                              key={color} 
+                              onPress={() => { setEditorColor(color); updateActiveText({ color }); }}
+                              style={[styles.colorSwatch, { backgroundColor: color, borderColor: editorColor === color ? '#38BDF8' : 'transparent' }]} 
+                            />
+                          ))}
+                        </>
+                      )}
                       
-                      {activeTool === 'bg' && ['transparent', '#000000', '#FFFFFF', '#EF4444'].map(color => (
-                        <TouchableOpacity 
-                          key={`bg-${color}`} 
-                          onPress={() => { setEditorBg(color); updateActiveText({ bg: color }); }}
-                          style={[styles.colorSwatch, { backgroundColor: color, borderWidth: 2, borderColor: editorBg === color ? '#38BDF8' : '#334155' }]} 
-                        >
-                          {color === 'transparent' && <Text style={{fontSize: 10, textAlign: 'center', lineHeight: 26, color: '#94A3B8'}}>None</Text>}
-                        </TouchableOpacity>
-                      ))}
+                      {activeTool === 'bg' && (
+                        <>
+                          <TouchableOpacity 
+                            onPress={() => setPickerTarget('bg')}
+                            style={[styles.colorSwatch, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#0F172A', borderColor: '#334155' }]} 
+                          >
+                            <Ionicons name="color-filter-outline" size={18} color="#F8FAFC" />
+                          </TouchableOpacity>
+                          {['transparent', '#000000', '#FFFFFF', '#EF4444', '#FACC15', '#3B82F6'].map(color => (
+                            <TouchableOpacity 
+                              key={`bg-${color}`} 
+                              onPress={() => { setEditorBg(color); updateActiveText({ bg: color }); }}
+                              style={[styles.colorSwatch, { backgroundColor: color, borderWidth: 2, borderColor: editorBg === color ? '#38BDF8' : '#334155' }]} 
+                            >
+                              {color === 'transparent' && <Text style={{fontSize: 10, textAlign: 'center', lineHeight: 26, color: '#94A3B8'}}>None</Text>}
+                            </TouchableOpacity>
+                          ))}
+                        </>
+                      )}
 
-                      {activeTool === 'size' && [16, 24, 32, 48, 64].map(size => (
-                        <TouchableOpacity 
-                          key={`size-${size}`} 
-                          onPress={() => { setEditorSize(size); updateActiveText({ size }); }}
-                          style={[styles.categoryBtn, { backgroundColor: editorSize === size ? '#334155' : '#0F172A', borderWidth: editorSize === size ? 1 : 0, borderColor: '#38BDF8' }]}
-                        >
-                          <Text style={styles.categoryBtnText}>{size}px</Text>
-                        </TouchableOpacity>
-                      ))}
+                      {activeTool === 'size' && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#0F172A', borderRadius: 8, borderWidth: 1, borderColor: '#334155', paddingHorizontal: 12 }}>
+                          <TextInput 
+                            style={{ color: '#F8FAFC', fontSize: 16, fontWeight: 'bold', minWidth: 40, textAlign: 'center', height: 40 }}
+                            keyboardType="number-pad"
+                            defaultValue={editorSize.toString()}
+                            onChangeText={(val) => {
+                              let num = parseInt(val);
+                              if (!isNaN(num)) {
+                                if (num > 144) num = 144;
+                                setEditorSize(num);
+                                updateActiveText({ size: num });
+                              }
+                            }}
+                            onEndEditing={(e) => {
+                              let num = parseInt(e.nativeEvent.text);
+                              if (isNaN(num) || num < 12) num = 12;
+                              if (num > 144) num = 144;
+                              setEditorSize(num);
+                              updateActiveText({ size: num });
+                            }}
+                          />
+                          <Text style={{ color: '#94A3B8', fontSize: 14, marginLeft: 4 }}>px</Text>
+                          <Text style={{ color: '#64748B', fontSize: 12, marginLeft: 12 }}>(12 - 144)</Text>
+                        </View>
+                      )}
 
-                      {activeTool === 'font' && ['System', 'serif', 'monospace'].map(font => (
-                        <TouchableOpacity 
-                          key={`font-${font}`} 
-                          onPress={() => { setEditorFont(font); updateActiveText({ font }); }}
-                          style={[styles.categoryBtn, { backgroundColor: editorFont === font ? '#334155' : '#0F172A', borderWidth: editorFont === font ? 1 : 0, borderColor: '#38BDF8' }]}
-                        >
-                          <Text style={[styles.categoryBtnText, { fontFamily: font }]}>{font}</Text>
-                        </TouchableOpacity>
-                      ))}
+                      {activeTool === 'font' && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <TouchableOpacity 
+                            onPress={handleUploadFont}
+                            style={[styles.categoryBtn, { backgroundColor: '#38BDF8', borderColor: '#0EA5E9', marginRight: 12 }]}
+                          >
+                            <Text style={[styles.categoryBtnText, { color: '#0F172A' }]}>Upload Font 📤</Text>
+                          </TouchableOpacity>
+                          {availableFonts.map(font => (
+                            <TouchableOpacity 
+                              key={`font-${font}`} 
+                              onPress={() => { setEditorFont(font); updateActiveText({ font }); }}
+                              style={[styles.categoryBtn, { backgroundColor: editorFont === font ? '#334155' : '#0F172A', borderWidth: editorFont === font ? 1 : 0, borderColor: '#38BDF8', marginRight: 8 }]}
+                            >
+                              <Text style={[styles.categoryBtnText, { fontFamily: fontsLoaded && font !== 'System' && font !== 'serif' && font !== 'monospace' ? font : undefined }]}>{font}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      )}
                     </ScrollView>
                   </View>
                 )}
               </View>
-              
               <TextInput
                 autoFocus
                 value={editorText}
                 onChangeText={(t) => { setEditorText(t); updateActiveText({ text: t }); }}
-                style={[styles.editorInput, { color: '#FFF', backgroundColor: '#0F172A' }]}
+                style={[
+                  styles.editorInput, 
+                  { 
+                    color: '#FFF', 
+                    backgroundColor: '#0F172A',
+                    fontFamily: fontsLoaded && editorFont !== 'System' && editorFont !== 'serif' && editorFont !== 'monospace' ? editorFont : undefined 
+                  }
+                ]}
                 placeholder="Type your meme caption..."
                 placeholderTextColor="#64748B"
                 multiline
@@ -371,6 +670,21 @@ export default function MemeMakerScreen() {
           </View>
         </View>
       </Modal>
+
+      <ColorPickerModal
+        visible={!!pickerTarget}
+        currentColor={pickerTarget === 'color' ? editorColor : editorBg === 'transparent' ? '#000000' : editorBg}
+        onPick={(color) => {
+          if (pickerTarget === 'color') {
+            setEditorColor(color);
+            updateActiveText({ color });
+          } else {
+            setEditorBg(color);
+            updateActiveText({ bg: color });
+          }
+        }}
+        onClose={() => setPickerTarget(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -421,7 +735,15 @@ const DraggableText = ({ item, onTap }: { item: any, onTap: () => void }) => {
         hitSlop={{ top: 40, bottom: 40, left: 40, right: 40 }}
         style={[styles.memeTextWrapper, textAnimatedStyle, { backgroundColor: item.bg }]}
       >
-        <Text style={[styles.memeTextPreview, { color: item.color, fontSize: item.size, fontFamily: item.font }]}>{item.text}</Text>
+        <Text style={[
+          styles.memeTextPreview, 
+          { 
+            color: item.color, 
+            fontSize: item.size, 
+            fontFamily: item.font !== 'System' && item.font !== 'serif' && item.font !== 'monospace' ? item.font : undefined,
+            fontWeight: item.font === 'System' ? 'bold' : 'normal'
+          }
+        ]}>{item.text}</Text>
       </Animated.View>
     </GestureDetector>
   );
@@ -577,5 +899,35 @@ const styles = StyleSheet.create({
   categoryBtnText: { color: '#F8FAFC', fontWeight: 'bold', fontSize: 14 },
   colorSwatch: { width: 32, height: 32, borderRadius: 16, marginRight: 12, borderWidth: 2 },
   toolDivider: { width: 2, height: 32, backgroundColor: '#334155', marginRight: 12 },
-  editorInput: { minHeight: 60, padding: 12, borderRadius: 12, fontSize: 18, fontWeight: 'bold' }
+  editorInput: { minHeight: 60, padding: 12, borderRadius: 12, fontSize: 18, fontWeight: 'bold' },
+
+  // Stickers Styles
+  stickersSection: { marginBottom: 16 },
+  stickersHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  stickersTitle: { color: '#94A3B8', fontSize: 13, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 1 },
+  stickersViewAll: { color: '#38BDF8', fontSize: 14, fontWeight: 'bold' },
+  stickersRow: { flexDirection: 'row', gap: 12 },
+  stickersGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  stickerCard: { 
+    backgroundColor: '#0F172A', 
+    borderRadius: 12, 
+    borderWidth: 1, 
+    borderColor: '#334155',
+    overflow: 'hidden'
+  },
+  stickerCardGrid: { 
+    backgroundColor: '#0F172A', 
+    borderRadius: 12, 
+    borderWidth: 1, 
+    borderColor: '#334155',
+    overflow: 'hidden',
+    width: '48%',
+    marginBottom: 12
+  },
+  stickerPreview: { 
+    height: 48, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    paddingHorizontal: 8 
+  }
 });
