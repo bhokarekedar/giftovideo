@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Stack } from 'expo-router';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, { useSharedValue, useAnimatedStyle } from 'react-native-reanimated';
 import { theme } from '../core/theme';
 import { MediaAssetService } from '../core/media/MediaAssetService';
 
@@ -15,6 +17,42 @@ export default function MemeMakerScreen() {
   const [duration, setDuration] = useState<number>(5);
   const [background, setBackground] = useState<'blur' | 'solid'>('blur');
   const [memeText, setMemeText] = useState<string>('');
+
+  // Gesture State
+  const scale = useSharedValue(1);
+  const savedScale = useSharedValue(1);
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const savedTranslateX = useSharedValue(0);
+  const savedTranslateY = useSharedValue(0);
+
+  const pinchGesture = Gesture.Pinch()
+    .onUpdate((e) => {
+      scale.value = savedScale.value * e.scale;
+    })
+    .onEnd(() => {
+      savedScale.value = scale.value;
+    });
+
+  const panGesture = Gesture.Pan()
+    .onUpdate((e) => {
+      translateX.value = savedTranslateX.value + e.translationX;
+      translateY.value = savedTranslateY.value + e.translationY;
+    })
+    .onEnd(() => {
+      savedTranslateX.value = translateX.value;
+      savedTranslateY.value = translateY.value;
+    });
+
+  const composedGesture = Gesture.Simultaneous(pinchGesture, panGesture);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: translateX.value },
+      { translateY: translateY.value },
+      { scale: scale.value }
+    ]
+  }));
 
   // Automatically open picker when screen mounts if no GIF is selected
   useEffect(() => {
@@ -58,8 +96,33 @@ export default function MemeMakerScreen() {
         {/* 1. The 9:16 Canvas Preview */}
         <View style={styles.canvasContainer}>
           <View style={styles.canvas}>
-            {/* Placeholder for actual Video/Image component */}
-            <Text style={styles.canvasPlaceholderText}>GIF Preview</Text>
+            {/* Background Layer */}
+            {background === 'blur' ? (
+              <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: '#0F172A', overflow: 'hidden' }}>
+                {/* Massive scale creates a moving ambient light gradient from the GIF */}
+                <Image 
+                  source={{ uri: gifUri }} 
+                  style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, width: '100%', height: '100%', opacity: 0.35, transform: [{ scale: 12 }] }} 
+                  resizeMode="cover" 
+                />
+              </View>
+            ) : (
+              <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: '#0F172A' }} />
+            )}
+            
+            {/* Foreground Layer (Transformable GIF) */}
+            <GestureDetector gesture={composedGesture}>
+              <Animated.Image 
+                source={{ uri: gifUri }} 
+                style={[
+                  { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, width: '100%', height: '100%' }, 
+                  animatedStyle
+                ]} 
+                resizeMode="contain" 
+              />
+            </GestureDetector>
+
+            {/* Meme Text Overlay */}
             {memeText ? (
               <Text style={styles.memeTextPreview}>{memeText}</Text>
             ) : null}
@@ -130,10 +193,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: theme.spacing.sm, // Reduced padding
     paddingHorizontal: theme.spacing.sm,
+    width: '100%',
   },
   canvas: {
-    height: '100%',
-    aspectRatio: 9 / 16, // Automatically maintains 9:16 based on available height
+    flex: 1,
+    aspectRatio: 9 / 16, // Automatically maintains 9:16
     backgroundColor: '#1E293B',
     borderRadius: theme.radius.sm,
     justifyContent: 'center',
