@@ -16,6 +16,8 @@ export function TrackItemView({ trackId, item }: TrackItemViewProps) {
   const updateItem = useEditorStore(state => state.updateItem);
   const selectItem = useEditorStore(state => state.selectItem);
   const selectedItemId = useEditorStore(state => state.selectedItemId);
+  const setPlayhead = useEditorStore(state => state.setPlayhead);
+  const triggerFocusInput = useEditorStore(state => state.triggerFocusInput);
   
   const isSelected = selectedItemId === item.id;
   
@@ -23,24 +25,42 @@ export function TrackItemView({ trackId, item }: TrackItemViewProps) {
   const initialLeft = (item.startTime / 1000) * PIXELS_PER_SECOND;
   const baseWidth = (item.duration / 1000) * PIXELS_PER_SECOND;
 
-  const translateX = useSharedValue(0);
-  const resizeWidth = useSharedValue(0);
+  const positionX = useSharedValue(initialLeft);
+  const animatedWidth = useSharedValue(baseWidth);
   const isDragging = useSharedValue(false);
 
+  React.useEffect(() => {
+    positionX.value = initialLeft;
+  }, [initialLeft]);
+
+  React.useEffect(() => {
+    animatedWidth.value = baseWidth;
+  }, [baseWidth]);
+
   const panGesture = Gesture.Pan()
-    .onBegin(() => {
+    .onBegin((e) => {
       isDragging.value = true;
       runOnJS(selectItem)(item.id);
+      
+      const timeMs = item.startTime + (e.x / PIXELS_PER_SECOND) * 1000;
+      runOnJS(setPlayhead)(timeMs);
     })
     .onUpdate((e) => {
-      translateX.value = e.translationX;
+      positionX.value = initialLeft + e.translationX;
     })
-    .onEnd(() => {
+    .onEnd((e) => {
       isDragging.value = false;
-      const msDelta = (translateX.value / PIXELS_PER_SECOND) * 1000;
+      const msDelta = (e.translationX / PIXELS_PER_SECOND) * 1000;
       const newStartTime = Math.max(0, item.startTime + msDelta);
       runOnJS(updateItem)(trackId, item.id, { startTime: newStartTime });
-      translateX.value = withSpring(0);
+    });
+
+  const tapGesture = Gesture.Tap()
+    .maxDuration(250)
+    .onEnd(() => {
+      if (item.type === 'text') {
+        runOnJS(triggerFocusInput)();
+      }
     });
 
   const resizeGesture = Gesture.Pan()
@@ -48,19 +68,18 @@ export function TrackItemView({ trackId, item }: TrackItemViewProps) {
       runOnJS(selectItem)(item.id);
     })
     .onUpdate((e) => {
-      resizeWidth.value = e.translationX;
+      animatedWidth.value = Math.max(20, baseWidth + e.translationX);
     })
-    .onEnd(() => {
-      const msDelta = (resizeWidth.value / PIXELS_PER_SECOND) * 1000;
+    .onEnd((e) => {
+      const msDelta = (e.translationX / PIXELS_PER_SECOND) * 1000;
       const newDuration = Math.max(500, item.duration + msDelta); // min 0.5s
       runOnJS(updateItem)(trackId, item.id, { duration: newDuration });
-      resizeWidth.value = 0;
     });
 
   const animatedStyle = useAnimatedStyle(() => {
     return {
-      transform: [{ translateX: translateX.value }],
-      width: Math.max(20, baseWidth + resizeWidth.value),
+      left: positionX.value,
+      width: animatedWidth.value,
       zIndex: isDragging.value ? 10 : 1,
       opacity: isDragging.value ? 0.8 : 1,
     };
@@ -75,14 +94,15 @@ export function TrackItemView({ trackId, item }: TrackItemViewProps) {
     }
   };
 
+  const composedGesture = Gesture.Simultaneous(panGesture, tapGesture);
+
   return (
-    <GestureDetector gesture={panGesture}>
+    <GestureDetector gesture={composedGesture}>
       <Animated.View 
         style={[
           styles.container, 
           animatedStyle, 
           { 
-            left: initialLeft, 
             backgroundColor: getBackgroundColor(),
             borderColor: isSelected ? '#FFF' : 'transparent',
             borderWidth: isSelected ? 2 : 0,

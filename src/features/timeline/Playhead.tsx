@@ -25,7 +25,7 @@ export function Playhead() {
   const pan = Gesture.Pan()
     .onBegin(() => {
       isScrubbing.value = true;
-      startScrubTime.value = useEditorStore.getState().currentTime;
+      startScrubTime.value = currentTime; // Use closure variable instead of getState() on UI thread
     })
     .onChange((e) => {
       const newTime = Math.max(0, startScrubTime.value + (e.translationX / PIXELS_PER_SECOND) * 1000);

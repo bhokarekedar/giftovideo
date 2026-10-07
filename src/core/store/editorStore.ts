@@ -18,6 +18,10 @@ interface EditorState {
   addItemToTrack: (trackId: string, item: TrackItem) => void;
   updateItem: (trackId: string, itemId: string, updates: Partial<TrackItem>) => void;
   deleteItem: (trackId: string, itemId: string) => void;
+
+  // UI State
+  focusInputSignal: number;
+  triggerFocusInput: () => void;
 }
 
 export const useEditorStore = create<EditorState>((set) => ({
@@ -25,6 +29,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   currentTime: 0,
   selectedItemId: null,
   isPlaying: false,
+  focusInputSignal: 0,
 
   loadProject: (project) => set({ project }),
   
@@ -33,6 +38,8 @@ export const useEditorStore = create<EditorState>((set) => ({
   setIsPlaying: (isPlaying) => set({ isPlaying }),
   
   selectItem: (itemId) => set({ selectedItemId: itemId }),
+
+  triggerFocusInput: () => set(state => ({ focusInputSignal: state.focusInputSignal + 1 })),
 
   addTrack: (type) => set((state) => {
     if (!state.project) return state;

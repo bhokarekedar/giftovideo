@@ -5,11 +5,12 @@ import { theme } from '../../core/theme';
 import { useEditorStore } from '../../core/store/editorStore';
 import { usePlaybackEngine } from '../../core/playback/usePlaybackEngine';
 import { TextOverlayRenderer } from './TextOverlayRenderer';
+import { HiddenAudioPlayer } from './HiddenAudioPlayer';
 
 export function EditorCanvas() {
   const project = useEditorStore(state => state.project);
   const currentTime = useEditorStore(state => state.currentTime);
-  const { isPlaying, visibleVideoItem } = usePlaybackEngine();
+  const { isPlaying, visibleVideoItem, visibleAudioItems } = usePlaybackEngine();
   
   const player = useVideoPlayer(visibleVideoItem?.uri || null, player => {
     player.muted = true;
@@ -26,23 +27,29 @@ export function EditorCanvas() {
   const canvasWidth = availableWidth;
   const canvasHeight = availableWidth / ratio;
 
-  // Sync video position with currentTime
+  // Play/pause and initial sync when playback starts
   useEffect(() => {
-    if (visibleVideoItem && player) {
-      if (!isPlaying) {
-        const relativeTime = currentTime - visibleVideoItem.startTime;
+    if (!player) return;
+    
+    if (isPlaying) {
+      if (visibleVideoItem) {
+        const stateTime = useEditorStore.getState().currentTime;
+        const relativeTime = stateTime - visibleVideoItem.startTime;
         player.currentTime = Math.max(0, relativeTime) / 1000;
-      } else {
-        player.play();
       }
-    }
-  }, [currentTime, isPlaying, visibleVideoItem, player]);
-
-  useEffect(() => {
-    if (!isPlaying && player) {
+      player.play();
+    } else {
       player.pause();
     }
-  }, [isPlaying, player]);
+  }, [isPlaying, player, visibleVideoItem]);
+
+  // Scrubbing/Seeking sync (only when paused)
+  useEffect(() => {
+    if (!isPlaying && visibleVideoItem && player) {
+      const relativeTime = currentTime - visibleVideoItem.startTime;
+      player.currentTime = Math.max(0, relativeTime) / 1000;
+    }
+  }, [currentTime, isPlaying, visibleVideoItem, player]);
 
   return (
     <View style={styles.container}>
@@ -66,6 +73,15 @@ export function EditorCanvas() {
         )}
         
         <TextOverlayRenderer canvasWidth={canvasWidth} canvasHeight={canvasHeight} />
+        
+        {visibleAudioItems.map(item => (
+          <HiddenAudioPlayer 
+            key={item.id} 
+            item={item} 
+            isPlaying={isPlaying} 
+            currentTime={currentTime} 
+          />
+        ))}
       </View>
     </View>
   );

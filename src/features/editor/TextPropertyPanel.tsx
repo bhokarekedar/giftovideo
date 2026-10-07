@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { View, StyleSheet, TextInput, TouchableOpacity } from 'react-native';
 import { theme } from '../../core/theme';
 import { useEditorStore } from '../../core/store/editorStore';
@@ -10,6 +10,15 @@ export function TextPropertyPanel() {
   const project = useEditorStore(state => state.project);
   const selectedItemId = useEditorStore(state => state.selectedItemId);
   const updateItem = useEditorStore(state => state.updateItem);
+  const focusInputSignal = useEditorStore(state => state.focusInputSignal);
+  
+  const inputRef = useRef<TextInput>(null);
+
+  useEffect(() => {
+    if (inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [focusInputSignal, selectedItemId]);
 
   if (!project || !selectedItemId) return null;
 
@@ -41,11 +50,14 @@ export function TextPropertyPanel() {
   return (
     <View style={styles.container}>
       <TextInput 
+        ref={inputRef}
+        key={selectedItemId}
         style={styles.input} 
         value={selectedItem.text} 
         onChangeText={handleChangeText} 
         placeholder="Enter text..."
         placeholderTextColor={theme.colors.textSecondary}
+        autoFocus={true}
       />
       <View style={styles.colorRow}>
         {COLORS.map(c => (

@@ -9,7 +9,7 @@ import { EditorCanvas } from '../../features/canvas/EditorCanvas';
 import { Timeline } from '../../features/timeline/Timeline';
 import { PlaybackControls } from '../../features/timeline/PlaybackControls';
 import { TextPropertyPanel } from '../../features/editor/TextPropertyPanel';
-import { TextItem, VideoItem } from '../../core/models/Project';
+import { TextItem, VideoItem, AudioItem } from '../../core/models/Project';
 
 export default function EditorScreen() {
   const { id } = useLocalSearchParams();
@@ -82,6 +82,25 @@ export default function EditorScreen() {
     if (media) {
       addTrack('audio');
       console.log('Picked Audio:', media.uri);
+      
+      setTimeout(() => {
+        const state = useEditorStore.getState();
+        const audioTracks = state.project?.timeline.tracks.filter(t => t.type === 'audio') || [];
+        const newTrack = audioTracks[audioTracks.length - 1];
+        if (newTrack) {
+          const newItem: AudioItem = {
+            id: `audio_${Date.now()}`,
+            type: 'audio',
+            uri: media.uri,
+            startTime: currentTime,
+            duration: media.duration || 5000,
+            sourceStartTime: 0,
+            volume: 1,
+          };
+          state.addItemToTrack(newTrack.id, newItem);
+          state.selectItem(newItem.id);
+        }
+      }, 10);
     }
   };
 

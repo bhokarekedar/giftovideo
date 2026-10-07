@@ -17,6 +17,8 @@ export function DraggableTextItem({ trackId, item, canvasWidth, canvasHeight }: 
   const selectItem = useEditorStore(state => state.selectItem);
   const selectedItemId = useEditorStore(state => state.selectedItemId);
 
+  const triggerFocusInput = useEditorStore(state => state.triggerFocusInput);
+
   const isSelected = selectedItemId === item.id;
 
   // Convert normalized position to absolute pixels
@@ -55,7 +57,14 @@ export function DraggableTextItem({ trackId, item, canvasWidth, canvasHeight }: 
       runOnJS(updateItem)(trackId, item.id, { scale: scale.value });
     });
 
-  const composedGesture = Gesture.Simultaneous(panGesture, pinchGesture);
+  const tapGesture = Gesture.Tap()
+    .maxDuration(250)
+    .onEnd(() => {
+      runOnJS(selectItem)(item.id);
+      runOnJS(triggerFocusInput)();
+    });
+
+  const composedGesture = Gesture.Simultaneous(panGesture, pinchGesture, tapGesture);
 
   const animatedStyle = useAnimatedStyle(() => {
     return {
