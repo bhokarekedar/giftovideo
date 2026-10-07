@@ -17,8 +17,8 @@ export default function RootLayout() {
             contentStyle: { backgroundColor: theme.colors.background },
           }}
         >
-          <Stack.Screen name="index" options={{ title: 'Projects' }} />
-          <Stack.Screen name="editor/[id]" options={{ headerShown: false }} />
+          <Stack.Screen name="index" options={{ headerShown: false }} />
+          <Stack.Screen name="meme-maker" />
         </Stack>
       </SafeAreaProvider>
     </GestureHandlerRootView>

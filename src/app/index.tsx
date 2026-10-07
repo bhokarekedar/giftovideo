@@ -1,8 +1,10 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { theme } from '../core/theme';
+
+const { width } = Dimensions.get('window');
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -13,25 +15,61 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
-        <Text style={styles.title}>GifToVideo</Text>
-        <Text style={styles.subtitle}>The fastest way to turn GIFs into Social Reels</Text>
-        
-        <View style={styles.cardsContainer}>
-          <TouchableOpacity 
-            style={[styles.card, styles.featuredCard]} 
-            activeOpacity={0.8}
-            onPress={handleStart}
-          >
-            <View style={styles.cardIconPlaceholder}>
-              <Text style={styles.cardIconText}>🚀</Text>
-            </View>
-            <Text style={styles.cardTitle}>GIF to Reel / Meme Maker</Text>
-            <Text style={styles.cardDescription}>
-              Upload a GIF, set looping duration, add text & audio, and export to social media in 5 seconds. Entirely offline.
-            </Text>
-          </TouchableOpacity>
+      {/* 1. The "Show, Don't Tell" Banner (Top) */}
+      <View style={styles.bannerContainer}>
+        <Text style={styles.bannerTitle}>GIF to Reel</Text>
+        <View style={styles.visualDemo}>
+          {/* Left: Raw GIF */}
+          <View style={styles.demoRaw}>
+            <Text style={styles.demoEmoji}>🔲</Text>
+            <Text style={styles.demoText}>Raw GIF</Text>
+          </View>
+          
+          <Text style={styles.demoArrow}>→</Text>
+          
+          {/* Right: Finished Reel */}
+          <View style={styles.demoFinished}>
+            <Text style={styles.demoTextTop}>Meme Text</Text>
+            <Text style={styles.demoEmoji}>🔲</Text>
+            <Text style={styles.demoTextBottom}>Blurred BG</Text>
+          </View>
         </View>
+      </View>
+
+      {/* 2. The Primary Call to Action (Center) */}
+      <View style={styles.ctaContainer}>
+        <TouchableOpacity 
+          style={styles.mainButton} 
+          activeOpacity={0.8}
+          onPress={handleStart}
+        >
+          <Text style={styles.mainButtonIcon}>+</Text>
+          <Text style={styles.mainButtonText}>Choose GIF / Image</Text>
+        </TouchableOpacity>
+        <Text style={styles.microText}>Auto-formats to 9:16 and loops perfectly.</Text>
+      </View>
+
+      {/* 3. The "Recent Exports" Gallery (Bottom) */}
+      <View style={styles.galleryContainer}>
+        <Text style={styles.galleryTitle}>Recent Exports</Text>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.galleryScroll}
+        >
+          {/* Example 1 */}
+          <View style={styles.galleryItem}>
+            <Text style={styles.galleryItemText}>Example 1</Text>
+          </View>
+          {/* Example 2 */}
+          <View style={styles.galleryItem}>
+            <Text style={styles.galleryItemText}>Example 2</Text>
+          </View>
+          {/* Example 3 */}
+          <View style={styles.galleryItem}>
+            <Text style={styles.galleryItemText}>Example 3</Text>
+          </View>
+        </ScrollView>
       </View>
     </SafeAreaView>
   );
@@ -40,64 +78,146 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background,
+    backgroundColor: '#0F172A', // Deep slate dark mode
   },
-  content: {
+  
+  // Banner Styles
+  bannerContainer: {
+    paddingTop: theme.spacing.xl,
+    paddingHorizontal: theme.spacing.lg,
+    alignItems: 'center',
     flex: 1,
-    padding: theme.spacing.lg,
     justifyContent: 'center',
   },
-  title: {
-    color: theme.colors.text,
-    fontSize: theme.typography.sizes.xxl,
+  bannerTitle: {
+    color: '#F8FAFC',
+    fontSize: theme.typography.sizes.xl,
     fontWeight: theme.typography.weights.bold,
-    marginBottom: theme.spacing.xs,
-    textAlign: 'center',
+    marginBottom: theme.spacing.lg,
+    letterSpacing: 1,
   },
-  subtitle: {
-    color: theme.colors.textSecondary,
-    fontSize: theme.typography.sizes.md,
-    marginBottom: 40,
-    textAlign: 'center',
+  visualDemo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1E293B',
+    padding: theme.spacing.lg,
+    borderRadius: theme.radius.lg,
+    width: '100%',
+    justifyContent: 'space-between',
   },
-  cardsContainer: {
-    gap: theme.spacing.lg,
-  },
-  card: {
-    borderRadius: theme.radius.md,
-    padding: theme.spacing.xl,
-    borderWidth: 1,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  featuredCard: {
-    backgroundColor: '#064E3B', // Deep emerald green
-    borderColor: '#059669',
-    shadowColor: '#059669',
-  },
-  cardIconPlaceholder: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+  demoRaw: {
+    width: 70,
+    height: 70,
+    backgroundColor: '#334155',
+    borderRadius: theme.radius.sm,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: theme.spacing.md,
+    borderWidth: 1,
+    borderColor: '#475569',
   },
-  cardIconText: {
+  demoArrow: {
+    color: '#94A3B8',
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+  demoFinished: {
+    width: 70,
+    height: 120, // 9:16 aspect ratio representation
+    backgroundColor: '#334155',
+    borderRadius: theme.radius.sm,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderWidth: 2,
+    borderColor: '#38BDF8', // Highlighted to show it's the premium result
+  },
+  demoEmoji: {
     fontSize: 24,
   },
-  cardTitle: {
-    color: theme.colors.text,
-    fontSize: theme.typography.sizes.lg,
-    fontWeight: theme.typography.weights.bold,
-    marginBottom: theme.spacing.sm,
+  demoText: {
+    color: '#94A3B8',
+    fontSize: 10,
+    marginTop: 4,
   },
-  cardDescription: {
-    color: 'rgba(255,255,255,0.8)',
+  demoTextTop: {
+    color: '#F8FAFC',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  demoTextBottom: {
+    color: '#94A3B8',
+    fontSize: 8,
+  },
+
+  // CTA Styles
+  ctaContainer: {
+    flex: 1.5,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: theme.spacing.lg,
+  },
+  mainButton: {
+    backgroundColor: '#38BDF8', // Vivid Sky Blue
+    width: '100%',
+    paddingVertical: 20,
+    borderRadius: 100, // Pill shape
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#38BDF8',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 10,
+    marginBottom: theme.spacing.md,
+  },
+  mainButtonIcon: {
+    color: '#0F172A',
+    fontSize: 28,
+    fontWeight: 'bold',
+    marginRight: 12,
+    marginTop: -2,
+  },
+  mainButtonText: {
+    color: '#0F172A',
+    fontSize: 20,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
+  },
+  microText: {
+    color: '#94A3B8',
     fontSize: theme.typography.sizes.sm,
-    lineHeight: 20,
+    textAlign: 'center',
+  },
+
+  // Gallery Styles
+  galleryContainer: {
+    flex: 1,
+    paddingBottom: theme.spacing.xl,
+  },
+  galleryTitle: {
+    color: '#F8FAFC',
+    fontSize: theme.typography.sizes.md,
+    fontWeight: 'bold',
+    paddingHorizontal: theme.spacing.lg,
+    marginBottom: theme.spacing.md,
+  },
+  galleryScroll: {
+    paddingHorizontal: theme.spacing.lg,
+    gap: theme.spacing.md,
+  },
+  galleryItem: {
+    width: width * 0.28,
+    height: (width * 0.28) * (16/9),
+    backgroundColor: '#1E293B',
+    borderRadius: theme.radius.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  galleryItemText: {
+    color: '#64748B',
+    fontSize: theme.typography.sizes.xs,
   }
 });
