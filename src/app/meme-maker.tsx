@@ -159,7 +159,7 @@ export default function MemeMakerScreen() {
       }
 
       // NATIVE BUILD (Generate Video)
-      const { status } = await MediaLibrary.requestPermissionsAsync();
+      const { status } = await MediaLibrary.requestPermissionsAsync({ writeOnly: true });
       if (status !== 'granted') {
         Alert.alert('Permission needed', 'Please grant permission to save videos to your library.');
         setIsSaving(false);
