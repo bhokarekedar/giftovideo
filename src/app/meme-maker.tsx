@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system';
-import { useRouter, Stack } from 'expo-router';
+import { useRouter, Stack, useLocalSearchParams } from 'expo-router';
 import * as Font from 'expo-font';
 import * as DocumentPicker from 'expo-document-picker';
 import { VerticalSlider } from '../components/VerticalSlider';
@@ -49,7 +49,27 @@ const STICKER_PRESETS = [
 
 export default function MemeMakerScreen() {
   const router = useRouter();
+  const { templateId } = useLocalSearchParams();
   const [gifUri, setGifUri] = useState<string | null>(null);
+
+  // Text Editor State (Multiple Texts)
+  const [texts, setTexts] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (templateId) {
+      const preset = STICKER_PRESETS.find(p => p.id === templateId);
+      if (preset) {
+        setTexts([{
+          id: Date.now().toString(),
+          text: preset.text,
+          color: preset.color,
+          bg: preset.bg,
+          size: preset.size,
+          font: preset.font
+        }]);
+      }
+    }
+  }, [templateId]);
   
   // Custom Fonts State
   const [fontsLoaded, setFontsLoaded] = useState(false);
@@ -200,8 +220,7 @@ export default function MemeMakerScreen() {
     }
   };
 
-  // Text Editor State (Multiple Texts)
-  const [texts, setTexts] = useState<any[]>([]);
+  // Text Editor State (Multiple Texts) - initialized at top
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isEditingText, setIsEditingText] = useState(false);
   const [activeTool, setActiveTool] = useState<'none' | 'color' | 'bg' | 'size' | 'font'>('none');
