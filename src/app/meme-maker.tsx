@@ -7,20 +7,20 @@ import * as FileSystem from 'expo-file-system';
 import { useRouter, Stack } from 'expo-router';
 import * as Font from 'expo-font';
 import * as DocumentPicker from 'expo-document-picker';
-
+import { VerticalSlider } from '../components/VerticalSlider';
 let MediaLibrary: any = null;
 let FFmpegKit: any = null;
 let ReturnCode: any = null;
 
 try {
   MediaLibrary = require('expo-media-library');
-  const ffmpeg = require('ffmpeg-kit-react-native');
+  const ffmpeg = require('@wokcito/ffmpeg-kit-react-native');
   FFmpegKit = ffmpeg.FFmpegKit;
   ReturnCode = ffmpeg.ReturnCode;
 } catch (e) {
   console.log('Native video modules disabled. Running in Expo Go fallback mode.');
 }
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { useSharedValue, useAnimatedStyle, runOnJS } from 'react-native-reanimated';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { theme } from '../core/theme';
@@ -32,18 +32,19 @@ const CANVAS_WIDTH = width * 0.55;
 const CANVAS_HEIGHT = CANVAS_WIDTH * (16 / 9);
 
 const STICKER_PRESETS = [
-  { id: 'st1', text: 'TOP TEXT', color: '#FFFFFF', bg: 'transparent', size: 36, font: 'Anton' },
-  { id: 'st2', text: 'BREAKING NEWS', color: '#FFFFFF', bg: '#EF4444', size: 28, font: 'Bebas Neue' },
-  { id: 'st3', text: 'POV:', color: '#FFFFFF', bg: 'transparent', size: 32, font: 'System' },
-  { id: 'st4', text: 'WAIT FOR IT', color: '#FACC15', bg: '#000000', size: 28, font: 'Anton' },
-  { id: 'st5', text: '💬 Who said that?', color: '#000000', bg: '#FFFFFF', size: 20, font: 'Comic Neue' },
-  { id: 'st6', text: 'v i b e s', color: '#FFFFFF', bg: '#A855F7', size: 24, font: 'serif' },
-  { id: 'st7', text: '"Literally me"', color: '#FFFFFF', bg: 'transparent', size: 26, font: 'System' },
-  { id: 'st8', text: 'hello.', color: '#000000', bg: '#F8FAFC', size: 18, font: 'monospace' },
-  { id: 'st9', text: '⚠️ CAUTION', color: '#000000', bg: '#FACC15', size: 24, font: 'Bebas Neue' },
-  { id: 'st10', text: '10/10 WOULD RECOMMEND', color: '#FFFFFF', bg: '#22C55E', size: 20, font: 'Bebas Neue' },
-  { id: 'st11', text: 'Verified ✅', color: '#FFFFFF', bg: '#38BDF8', size: 22, font: 'System' },
-  { id: 'st12', text: 'darkness', color: '#FFFFFF', bg: '#0F172A', size: 24, font: 'monospace' },
+  { id: 'st0', label: 'Long Text', text: 'Long text', color: '#FFFFFF', bg: 'rgba(0,0,0,0.6)', size: 18, font: 'System' },
+  { id: 'st1', label: 'TOP TEXT', text: 'TOP TEXT', color: '#FFFFFF', bg: 'transparent', size: 36, font: 'Anton' },
+  { id: 'st2', label: 'NEWS', text: 'BREAKING NEWS', color: '#FFFFFF', bg: '#EF4444', size: 28, font: 'Bebas Neue' },
+  { id: 'st3', label: 'POV', text: 'POV:', color: '#FFFFFF', bg: 'transparent', size: 32, font: 'System' },
+  { id: 'st4', label: 'WAIT', text: 'WAIT FOR IT', color: '#FACC15', bg: '#000000', size: 28, font: 'Anton' },
+  { id: 'st5', label: 'Quote', text: '💬 Who said that?', color: '#000000', bg: '#FFFFFF', size: 20, font: 'Comic Neue' },
+  { id: 'st6', label: 'vibes', text: 'v i b e s', color: '#FFFFFF', bg: '#A855F7', size: 24, font: 'serif' },
+  { id: 'st7', label: 'Me', text: '"Literally me"', color: '#FFFFFF', bg: 'transparent', size: 26, font: 'System' },
+  { id: 'st8', label: 'hello', text: 'hello.', color: '#000000', bg: '#F8FAFC', size: 18, font: 'monospace' },
+  { id: 'st9', label: 'CAUTION', text: '⚠️ CAUTION', color: '#000000', bg: '#FACC15', size: 24, font: 'Bebas Neue' },
+  { id: 'st10', label: '10/10', text: '10/10 WOULD RECOMMEND', color: '#FFFFFF', bg: '#22C55E', size: 20, font: 'Bebas Neue' },
+  { id: 'st11', label: 'Verified', text: 'Verified ✅', color: '#FFFFFF', bg: '#38BDF8', size: 22, font: 'System' },
+  { id: 'st12', label: 'darkness', text: 'darkness', color: '#FFFFFF', bg: '#0F172A', size: 24, font: 'monospace' },
 ];
 
 export default function MemeMakerScreen() {
@@ -161,7 +162,7 @@ export default function MemeMakerScreen() {
       // Show media layers again
       setHideMediaLayers(false);
 
-      const outputUri = `${FileSystem.cacheDirectory}meme_${Date.now()}.mp4`;
+      const outputUri = new FileSystem.File(FileSystem.Paths.cache, `meme_${Date.now()}.mp4`).uri;
       const cleanGifUri = gifUri.replace('file://', '');
       const cleanOverlayUri = overlayUri.replace('file://', '');
       const cleanOutputUri = outputUri.replace('file://', '');
@@ -359,6 +360,7 @@ export default function MemeMakerScreen() {
 
             {/* Render Multiple Text Layers */}
             {texts.map(textItem => (
+              (isEditingText && textItem.id === editingId) ? null :
               <DraggableText key={textItem.id} item={textItem} onTap={() => handleOpenEditor(textItem)} />
             ))}
           </View>
@@ -409,226 +411,170 @@ export default function MemeMakerScreen() {
         </View>
       </KeyboardAvoidingView>
 
-      {/* Text Editor Overlay */}
       {isEditingText && (
         <Modal transparent animationType="fade" visible={isEditingText}>
-          <KeyboardAvoidingView 
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.editorOverlay}
-          >
-            <TouchableOpacity 
-              style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 }} 
-              activeOpacity={1} 
-              onPress={() => setIsEditingText(false)}
-            >
-              <View style={styles.editorBackdrop} />
-            </TouchableOpacity>
-            
-            <View style={styles.editorPanel}>
-              <View style={styles.editorHeader}>
-                <TouchableOpacity onPress={handleDeleteActiveText}>
-                  <Text style={{ color: '#EF4444', fontWeight: 'bold', fontSize: 16 }}>Delete</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => {
-                  if (editorText.trim() === '') handleDeleteActiveText();
-                  else setIsEditingText(false);
-                }}>
-                  <Text style={styles.editorDone}>Done</Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* Stickers Section */}
-              <View style={styles.stickersSection}>
-                <View style={styles.stickersHeader}>
-                  <Text style={styles.stickersTitle}>Presets & Stickers</Text>
-                  <TouchableOpacity onPress={() => setShowAllStickers(!showAllStickers)}>
-                    <Text style={styles.stickersViewAll}>{showAllStickers ? 'Show less' : 'View all'}</Text>
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.7)' }} />
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+              <View style={{ flex: 1 }}>
+              
+              {/* Top Toolbar */}
+              <SafeAreaView>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: Platform.OS === 'android' ? 24 : 16 }}>
+                  <TouchableOpacity onPress={handleDeleteActiveText} style={{ padding: 8, backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 20 }}>
+                    <Ionicons name="trash-outline" size={24} color="#FFF" />
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={{ backgroundColor: '#F8FAFC', paddingHorizontal: 18, paddingVertical: 8, borderRadius: 24, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4 }}
+                    onPress={() => {
+                      if (editorText.trim() === '') handleDeleteActiveText();
+                      else setIsEditingText(false);
+                    }}>
+                    <Text style={{ color: '#0F172A', fontSize: 16, fontWeight: 'bold' }}>Done</Text>
                   </TouchableOpacity>
                 </View>
+              </SafeAreaView>
 
-                {showAllStickers ? (
-                  <ScrollView style={{ maxHeight: 160 }} showsVerticalScrollIndicator={false}>
-                    <View style={styles.stickersGrid}>
-                      {STICKER_PRESETS.map(preset => (
-                        <TouchableOpacity 
-                          key={preset.id} 
-                          style={styles.stickerCardGrid}
-                          onPress={() => {
-                            setEditorText(preset.text);
-                            setEditorColor(preset.color);
-                            setEditorBg(preset.bg);
-                            setEditorSize(preset.size);
-                            setEditorFont(preset.font);
-                            updateActiveText({ text: preset.text, color: preset.color, bg: preset.bg, size: preset.size, font: preset.font });
-                          }}
-                        >
-                          <View style={[styles.stickerPreview, { backgroundColor: preset.bg === 'transparent' ? '#334155' : preset.bg }]}>
-                             <Text style={{ color: preset.color, fontSize: 14, fontWeight: preset.font === 'System' ? 'bold' : 'normal', fontFamily: preset.font !== 'System' && preset.font !== 'serif' && preset.font !== 'monospace' ? preset.font : undefined, textAlign: 'center' }} numberOfLines={1}>{preset.text}</Text>
-                          </View>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </ScrollView>
-                ) : (
-                  <View style={styles.stickersRow}>
-                    {STICKER_PRESETS.slice(0, 2).map(preset => (
-                      <TouchableOpacity 
-                        key={preset.id} 
-                        style={[styles.stickerCard, { flex: 1 }]}
-                        onPress={() => {
-                          setEditorText(preset.text);
-                          setEditorColor(preset.color);
-                          setEditorBg(preset.bg);
-                          setEditorSize(preset.size);
-                          setEditorFont(preset.font);
-                          updateActiveText({ text: preset.text, color: preset.color, bg: preset.bg, size: preset.size, font: preset.font });
-                        }}
-                      >
-                        <View style={[styles.stickerPreview, { backgroundColor: preset.bg === 'transparent' ? '#334155' : preset.bg }]}>
-                           <Text style={{ color: preset.color, fontSize: 14, fontWeight: 'bold', textAlign: 'center' }} numberOfLines={1}>{preset.text}</Text>
-                        </View>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
+              {/* Central Editor Area & Slider */}
+              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+                <View style={{ width: 60, alignItems: 'center', justifyContent: 'center' }}>
+                   <VerticalSlider value={editorSize} onValueChange={(val) => { setEditorSize(val); updateActiveText({ size: val }); }} />
+                </View>
+                
+                <View style={{ flex: 1, paddingRight: 60, justifyContent: 'center', alignItems: 'center' }}>
+                  <TextInput
+                    autoFocus
+                    multiline
+                    value={editorText}
+                    onChangeText={(t) => { setEditorText(t); updateActiveText({ text: t }); }}
+                    style={{
+                      color: editorColor,
+                      backgroundColor: editorBg === 'transparent' ? 'transparent' : editorBg,
+                      fontSize: editorSize,
+                      fontFamily: fontsLoaded && editorFont !== 'System' && editorFont !== 'serif' && editorFont !== 'monospace' ? editorFont : undefined,
+                      fontWeight: editorFont === 'System' ? 'bold' : 'normal',
+                      textAlign: 'center',
+                      minWidth: '50%',
+                      paddingHorizontal: 16,
+                      paddingVertical: 8,
+                      borderRadius: 12
+                    }}
+                    placeholder="Type here..."
+                    placeholderTextColor="rgba(255,255,255,0.5)"
+                  />
+                </View>
               </View>
-              
-              <View style={styles.editorTools}>
-                {activeTool === 'none' ? (
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
-                     <TouchableOpacity style={[styles.categoryBtn, { flexDirection: 'row', alignItems: 'center' }]} onPress={() => setActiveTool('color')}>
-                       <Ionicons name="color-palette" size={16} color="#F8FAFC" style={{ marginRight: 6 }} />
-                       <Text style={styles.categoryBtnText}>Color</Text>
-                     </TouchableOpacity>
-                     
-                     <TouchableOpacity style={[styles.categoryBtn, { flexDirection: 'row', alignItems: 'center' }]} onPress={() => setActiveTool('bg')}>
-                       <MaterialIcons name="format-color-fill" size={16} color="#F8FAFC" style={{ marginRight: 6 }} />
-                       <Text style={styles.categoryBtnText}>Background</Text>
-                     </TouchableOpacity>
 
-                     <TouchableOpacity style={[styles.categoryBtn, { flexDirection: 'row', alignItems: 'center' }]} onPress={() => setActiveTool('size')}>
-                       <Ionicons name="text-outline" size={16} color="#F8FAFC" style={{ marginRight: 6 }} />
-                       <Text style={styles.categoryBtnText}>Size</Text>
-                     </TouchableOpacity>
-
-                     <TouchableOpacity style={[styles.categoryBtn, { flexDirection: 'row', alignItems: 'center' }]} onPress={() => setActiveTool('font')}>
-                       <Ionicons name="language" size={16} color="#F8FAFC" style={{ marginRight: 6 }} />
-                       <Text style={styles.categoryBtnText}>Font</Text>
-                     </TouchableOpacity>
-                  </ScrollView>
-                ) : (
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <TouchableOpacity onPress={() => setActiveTool('none')} style={{ marginRight: 16, padding: 4 }}>
-                      <Ionicons name="chevron-back" size={24} color="#94A3B8" />
+              {/* Bottom Toolbars Floating Above Keyboard */}
+              <View style={{ paddingBottom: 16 }}>
+                
+                {/* Floating Stickers / Presets Row (Always Visible) */}
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false} 
+                  style={{ marginBottom: 16 }} 
+                  contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}
+                >
+                  {STICKER_PRESETS.map(preset => (
+                    <TouchableOpacity 
+                      key={preset.id} 
+                      onPress={() => {
+                        setEditorText(preset.text);
+                        setEditorColor(preset.color);
+                        setEditorBg(preset.bg);
+                        setEditorSize(preset.size);
+                        setEditorFont(preset.font);
+                        updateActiveText({ text: preset.text, color: preset.color, bg: preset.bg, size: preset.size, font: preset.font });
+                      }}
+                      style={{ 
+                        backgroundColor: preset.bg === 'transparent' ? 'rgba(255,255,255,0.2)' : preset.bg, 
+                        paddingHorizontal: 20, 
+                        paddingVertical: 12, 
+                        borderRadius: 24,
+                        borderWidth: 1,
+                        borderColor: 'rgba(255,255,255,0.4)',
+                        justifyContent: 'center',
+                        alignItems: 'center'
+                      }}
+                    >
+                      <Text style={{ 
+                        color: preset.color, 
+                        fontSize: 14, 
+                        fontWeight: preset.font === 'System' ? 'bold' : 'normal', 
+                        fontFamily: preset.font !== 'System' && preset.font !== 'serif' && preset.font !== 'monospace' ? preset.font : undefined 
+                      }}>
+                        {preset.label || preset.text}
+                      </Text>
                     </TouchableOpacity>
-                    
+                  ))}
+                </ScrollView>
+
+                {/* Tools Toolbar */}
+                <View style={{ marginBottom: 12, paddingHorizontal: 16 }}>
+                  {activeTool === 'none' ? (
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
-                      {activeTool === 'color' && (
-                        <>
-                          <TouchableOpacity 
-                            onPress={() => setPickerTarget('color')}
-                            style={[styles.colorSwatch, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#0F172A', borderColor: '#334155' }]} 
-                          >
-                            <Ionicons name="color-filter-outline" size={18} color="#F8FAFC" />
-                          </TouchableOpacity>
-                          {['#FFFFFF', '#000000', '#FACC15', '#EF4444', '#38BDF8', '#22C55E', '#A855F7', '#F43F5E'].map(color => (
-                            <TouchableOpacity 
-                              key={color} 
-                              onPress={() => { setEditorColor(color); updateActiveText({ color }); }}
-                              style={[styles.colorSwatch, { backgroundColor: color, borderColor: editorColor === color ? '#38BDF8' : 'transparent' }]} 
-                            />
-                          ))}
-                        </>
-                      )}
-                      
-                      {activeTool === 'bg' && (
-                        <>
-                          <TouchableOpacity 
-                            onPress={() => setPickerTarget('bg')}
-                            style={[styles.colorSwatch, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#0F172A', borderColor: '#334155' }]} 
-                          >
-                            <Ionicons name="color-filter-outline" size={18} color="#F8FAFC" />
-                          </TouchableOpacity>
-                          {['transparent', '#000000', '#FFFFFF', '#EF4444', '#FACC15', '#3B82F6'].map(color => (
-                            <TouchableOpacity 
-                              key={`bg-${color}`} 
-                              onPress={() => { setEditorBg(color); updateActiveText({ bg: color }); }}
-                              style={[styles.colorSwatch, { backgroundColor: color, borderWidth: 2, borderColor: editorBg === color ? '#38BDF8' : '#334155' }]} 
-                            >
-                              {color === 'transparent' && <Text style={{fontSize: 10, textAlign: 'center', lineHeight: 26, color: '#94A3B8'}}>None</Text>}
-                            </TouchableOpacity>
-                          ))}
-                        </>
-                      )}
-
-                      {activeTool === 'size' && (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#0F172A', borderRadius: 8, borderWidth: 1, borderColor: '#334155', paddingHorizontal: 12 }}>
-                          <TextInput 
-                            style={{ color: '#F8FAFC', fontSize: 16, fontWeight: 'bold', minWidth: 40, textAlign: 'center', height: 40 }}
-                            keyboardType="number-pad"
-                            defaultValue={editorSize.toString()}
-                            onChangeText={(val) => {
-                              let num = parseInt(val);
-                              if (!isNaN(num)) {
-                                if (num > 144) num = 144;
-                                setEditorSize(num);
-                                updateActiveText({ size: num });
-                              }
-                            }}
-                            onEndEditing={(e) => {
-                              let num = parseInt(e.nativeEvent.text);
-                              if (isNaN(num) || num < 12) num = 12;
-                              if (num > 144) num = 144;
-                              setEditorSize(num);
-                              updateActiveText({ size: num });
-                            }}
-                          />
-                          <Text style={{ color: '#94A3B8', fontSize: 14, marginLeft: 4 }}>px</Text>
-                          <Text style={{ color: '#64748B', fontSize: 12, marginLeft: 12 }}>(12 - 144)</Text>
-                        </View>
-                      )}
-
-                      {activeTool === 'font' && (
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                          <TouchableOpacity 
-                            onPress={handleUploadFont}
-                            style={[styles.categoryBtn, { backgroundColor: '#38BDF8', borderColor: '#0EA5E9', marginRight: 12 }]}
-                          >
-                            <Text style={[styles.categoryBtnText, { color: '#0F172A' }]}>Upload Font 📤</Text>
-                          </TouchableOpacity>
-                          {availableFonts.map(font => (
-                            <TouchableOpacity 
-                              key={`font-${font}`} 
-                              onPress={() => { setEditorFont(font); updateActiveText({ font }); }}
-                              style={[styles.categoryBtn, { backgroundColor: editorFont === font ? '#334155' : '#0F172A', borderWidth: editorFont === font ? 1 : 0, borderColor: '#38BDF8', marginRight: 8 }]}
-                            >
-                              <Text style={[styles.categoryBtnText, { fontFamily: fontsLoaded && font !== 'System' && font !== 'serif' && font !== 'monospace' ? font : undefined }]}>{font}</Text>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      )}
+                       <TouchableOpacity style={[styles.categoryBtn, { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.15)', borderColor: 'rgba(255,255,255,0.3)' }]} onPress={() => setActiveTool('color')}>
+                         <Ionicons name="color-palette" size={16} color="#FFF" style={{ marginRight: 6 }} />
+                         <Text style={[styles.categoryBtnText, { color: '#FFF' }]}>Color</Text>
+                       </TouchableOpacity>
+                       <TouchableOpacity style={[styles.categoryBtn, { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.15)', borderColor: 'rgba(255,255,255,0.3)' }]} onPress={() => setActiveTool('bg')}>
+                         <MaterialIcons name="format-color-fill" size={16} color="#FFF" style={{ marginRight: 6 }} />
+                         <Text style={[styles.categoryBtnText, { color: '#FFF' }]}>Background</Text>
+                       </TouchableOpacity>
+                       <TouchableOpacity style={[styles.categoryBtn, { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.15)', borderColor: 'rgba(255,255,255,0.3)' }]} onPress={() => setActiveTool('font')}>
+                         <Ionicons name="language" size={16} color="#FFF" style={{ marginRight: 6 }} />
+                         <Text style={[styles.categoryBtnText, { color: '#FFF' }]}>Font</Text>
+                       </TouchableOpacity>
                     </ScrollView>
-                  </View>
-                )}
+                  ) : (
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <TouchableOpacity onPress={() => setActiveTool('none')} style={{ marginRight: 16, padding: 4 }}>
+                        <Ionicons name="chevron-back" size={24} color="#FFF" />
+                      </TouchableOpacity>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
+                        {activeTool === 'color' && (
+                          <>
+                            <TouchableOpacity onPress={() => setPickerTarget('color')} style={[styles.colorSwatch, { justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.1)', borderColor: 'rgba(255,255,255,0.3)' }]}>
+                              <Ionicons name="color-filter-outline" size={18} color="#FFF" />
+                            </TouchableOpacity>
+                            {['#FFFFFF', '#000000', '#FACC15', '#EF4444', '#38BDF8', '#22C55E', '#A855F7', '#F43F5E'].map(color => (
+                              <TouchableOpacity key={color} onPress={() => { setEditorColor(color); updateActiveText({ color }); }} style={[styles.colorSwatch, { backgroundColor: color, borderColor: editorColor === color ? '#FFF' : 'transparent' }]} />
+                            ))}
+                          </>
+                        )}
+                        {activeTool === 'bg' && (
+                          <>
+                            <TouchableOpacity onPress={() => setPickerTarget('bg')} style={[styles.colorSwatch, { justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.1)', borderColor: 'rgba(255,255,255,0.3)' }]}>
+                              <Ionicons name="color-filter-outline" size={18} color="#FFF" />
+                            </TouchableOpacity>
+                            {['transparent', '#000000', '#FFFFFF', '#EF4444', '#FACC15', '#3B82F6'].map(color => (
+                              <TouchableOpacity key={`bg-${color}`} onPress={() => { setEditorBg(color); updateActiveText({ bg: color }); }} style={[styles.colorSwatch, { backgroundColor: color, borderWidth: 2, borderColor: editorBg === color ? '#FFF' : 'rgba(255,255,255,0.3)' }]}>
+                                {color === 'transparent' && <Text style={{fontSize: 10, textAlign: 'center', lineHeight: 26, color: '#FFF'}}>None</Text>}
+                              </TouchableOpacity>
+                            ))}
+                          </>
+                        )}
+                        {activeTool === 'font' && (
+                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <TouchableOpacity onPress={handleUploadFont} style={[styles.categoryBtn, { backgroundColor: '#38BDF8', borderColor: '#0EA5E9', marginRight: 12 }]}>
+                              <Text style={[styles.categoryBtnText, { color: '#0F172A' }]}>Upload Font 📤</Text>
+                            </TouchableOpacity>
+                            {availableFonts.map(font => (
+                              <TouchableOpacity key={`font-${font}`} onPress={() => { setEditorFont(font); updateActiveText({ font }); }} style={[styles.categoryBtn, { backgroundColor: editorFont === font ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.1)', borderWidth: editorFont === font ? 1 : 0, borderColor: '#FFF', marginRight: 8 }]}>
+                                <Text style={[styles.categoryBtnText, { fontFamily: fontsLoaded && font !== 'System' && font !== 'serif' && font !== 'monospace' ? font : undefined, color: '#FFF' }]}>{font}</Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        )}
+                      </ScrollView>
+                    </View>
+                  )}
+                </View>
               </View>
-              <TextInput
-                autoFocus
-                value={editorText}
-                onChangeText={(t) => { setEditorText(t); updateActiveText({ text: t }); }}
-                style={[
-                  styles.editorInput, 
-                  { 
-                    color: '#FFF', 
-                    backgroundColor: '#0F172A',
-                    fontFamily: fontsLoaded && editorFont !== 'System' && editorFont !== 'serif' && editorFont !== 'monospace' ? editorFont : undefined 
-                  }
-                ]}
-                placeholder="Type your meme caption..."
-                placeholderTextColor="#64748B"
-                multiline
-              />
             </View>
           </KeyboardAvoidingView>
+
+          </GestureHandlerRootView>
         </Modal>
       )}
       {/* Background Action Sheet Modal */}

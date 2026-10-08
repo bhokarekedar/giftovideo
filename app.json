@@ -29,6 +29,12 @@
       "expo-video",
       "expo-sharing",
       "expo-font"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "f0728849-00bd-4a09-8c39-9c7348f0edee"
+      }
+    }
   }
 }

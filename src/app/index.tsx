@@ -49,28 +49,6 @@ export default function HomeScreen() {
         <Text style={styles.microText}>Auto-formats to 9:16 and loops perfectly.</Text>
       </View>
 
-      {/* 3. The "Recent Exports" Gallery (Bottom) */}
-      <View style={styles.galleryContainer}>
-        <Text style={styles.galleryTitle}>Recent Exports</Text>
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.galleryScroll}
-        >
-          {/* Example 1 */}
-          <View style={styles.galleryItem}>
-            <Text style={styles.galleryItemText}>Example 1</Text>
-          </View>
-          {/* Example 2 */}
-          <View style={styles.galleryItem}>
-            <Text style={styles.galleryItemText}>Example 2</Text>
-          </View>
-          {/* Example 3 */}
-          <View style={styles.galleryItem}>
-            <Text style={styles.galleryItemText}>Example 3</Text>
-          </View>
-        </ScrollView>
-      </View>
     </SafeAreaView>
   );
 }
@@ -188,36 +166,5 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     fontSize: theme.typography.sizes.sm,
     textAlign: 'center',
-  },
-
-  // Gallery Styles
-  galleryContainer: {
-    flex: 1,
-    paddingBottom: theme.spacing.xl,
-  },
-  galleryTitle: {
-    color: '#F8FAFC',
-    fontSize: theme.typography.sizes.md,
-    fontWeight: 'bold',
-    paddingHorizontal: theme.spacing.lg,
-    marginBottom: theme.spacing.md,
-  },
-  galleryScroll: {
-    paddingHorizontal: theme.spacing.lg,
-    gap: theme.spacing.md,
-  },
-  galleryItem: {
-    width: width * 0.28,
-    height: (width * 0.28) * (16/9),
-    backgroundColor: '#1E293B',
-    borderRadius: theme.radius.md,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  galleryItemText: {
-    color: '#64748B',
-    fontSize: theme.typography.sizes.xs,
   }
 });
