@@ -13,7 +13,7 @@ let FFmpegKit: any = null;
 let ReturnCode: any = null;
 
 try {
-  MediaLibrary = require('expo-media-library');
+  MediaLibrary = require('expo-media-library/legacy');
   const ffmpeg = require('@wokcito/ffmpeg-kit-react-native');
   FFmpegKit = ffmpeg.FFmpegKit;
   ReturnCode = ffmpeg.ReturnCode;
@@ -125,7 +125,18 @@ export default function MemeMakerScreen() {
   const [showAllStickers, setShowAllStickers] = useState(false);
 
   const canvasRef = useRef<View>(null);
+  const [canvasLayout, setCanvasLayout] = useState({ width: 360, height: 640 });
   const [isSaving, setIsSaving] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [currentSession, setCurrentSession] = useState<any>(null);
+
+  const handleCancel = async () => {
+    if (currentSession) {
+      await FFmpegKit.cancel(currentSession.getSessionId());
+    }
+    setIsSaving(false);
+    setProgress(0);
+  };
 
   const handleSave = async () => {
     try {
@@ -159,7 +170,7 @@ export default function MemeMakerScreen() {
       }
 
       // NATIVE BUILD (Generate Video)
-      const { status } = await MediaLibrary.requestPermissionsAsync({ writeOnly: true });
+      const { status } = await MediaLibrary.requestPermissionsAsync(true);
       if (status !== 'granted') {
         Alert.alert('Permission needed', 'Please grant permission to save videos to your library.');
         setIsSaving(false);
@@ -188,33 +199,58 @@ export default function MemeMakerScreen() {
       const cleanOutputUri = outputUri.replace('file://', '');
 
       const durationSec = duration || 5;
+      setProgress(0);
+
+      const gifScale = scale.value;
+      const gifTx = translateX.value * (720 / canvasLayout.width);
+      const gifTy = translateY.value * (1280 / canvasLayout.height);
 
       // Filter graph for blurring the background and placing gif, then text
       let filterComplex = '';
       if (background === 'blur') {
-        filterComplex = `[0:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,boxblur=20:20[bg];[0:v]scale=720:1280:force_original_aspect_ratio=decrease[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2[vid];[1:v]scale=720:1280[ovrl];[vid][ovrl]overlay=0:0`;
+        filterComplex = `[0:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,boxblur=20:20[bg];[0:v]scale=720:1280:force_original_aspect_ratio=decrease,scale=iw*${gifScale}:ih*${gifScale}[fg];[bg][fg]overlay=(W-w)/2+(${gifTx}):(H-h)/2+(${gifTy})[vid];[1:v]scale=720:1280[ovrl];[vid][ovrl]overlay=0:0`;
       } else {
-        filterComplex = `[0:v]scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2:color=black[bg];[1:v]scale=720:1280[ovrl];[bg][ovrl]overlay=0:0`;
+        filterComplex = `[0:v]scale=720:1280:force_original_aspect_ratio=decrease,scale=iw*${gifScale}:ih*${gifScale}[fg];color=c=black:s=720x1280[bg];[bg][fg]overlay=(W-w)/2+(${gifTx}):(H-h)/2+(${gifTy})[vid];[1:v]scale=720:1280[ovrl];[vid][ovrl]overlay=0:0`;
       }
 
       // Loop the GIF until the specified duration
       const ffmpegCommand = `-stream_loop -1 -i "${cleanGifUri}" -i "${cleanOverlayUri}" -filter_complex "${filterComplex}" -t ${durationSec} -c:v mpeg4 -q:v 2 -y "${cleanOutputUri}"`;
 
-      const session = await FFmpegKit.execute(ffmpegCommand);
-      const returnCode = await session.getReturnCode();
+      const session = await FFmpegKit.executeAsync(
+        ffmpegCommand,
+        async (sessionObj: any) => {
+          const returnCode = await sessionObj.getReturnCode();
+          if (ReturnCode.isSuccess(returnCode)) {
+            try {
+              await MediaLibrary.saveToLibraryAsync(outputUri);
+              Alert.alert('Success!', 'Video saved to your gallery!');
+            } catch (err: any) {
+              Alert.alert('Error', `Failed to save to gallery: ${err?.message}`);
+            }
+          } else if (ReturnCode.isCancel(returnCode)) {
+            console.log('User cancelled');
+          } else {
+            const logs = await sessionObj.getLogs();
+            console.error("FFmpeg error:", logs);
+            Alert.alert('Error', 'Failed to generate video.');
+          }
+          setIsSaving(false);
+          setHideMediaLayers(false);
+          setCurrentSession(null);
+        },
+        (log: any) => {},
+        (statistics: any) => {
+          const timeMs = statistics.getTime();
+          if (timeMs > 0) {
+            setProgress(Math.min(timeMs / (durationSec * 1000), 1));
+          }
+        }
+      );
+      setCurrentSession(session);
 
-      if (ReturnCode.isSuccess(returnCode)) {
-        await MediaLibrary.saveToLibraryAsync(outputUri);
-        Alert.alert('Success!', 'Video saved to your gallery!');
-      } else {
-        const logs = await session.getLogs();
-        console.error("FFmpeg error:", logs);
-        Alert.alert('Error', 'Failed to generate video. Make sure you are running a custom Dev Client, not Expo Go.');
-      }
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      Alert.alert('Error', 'Failed to save meme.');
-    } finally {
+      Alert.alert('Error', `Failed to save meme: ${error?.message || error}`);
       setIsSaving(false);
       setHideMediaLayers(false);
     }
@@ -339,7 +375,12 @@ export default function MemeMakerScreen() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 90}
       >
         <View style={styles.canvasContainer}>
-          <View style={styles.canvas} ref={canvasRef} collapsable={false}>
+          <View 
+            style={[styles.canvas, hideMediaLayers && { backgroundColor: 'transparent', borderColor: 'transparent' }]} 
+            ref={canvasRef} 
+            collapsable={false}
+            onLayout={(e) => setCanvasLayout(e.nativeEvent.layout)}
+          >
             {!hideMediaLayers && (
               <>
                 {/* Background Layer */}
@@ -650,6 +691,27 @@ export default function MemeMakerScreen() {
         }}
         onClose={() => setPickerTarget(null)}
       />
+
+      <Modal visible={isSaving} transparent animationType="fade">
+        <View style={{ flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.9)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ backgroundColor: '#1E293B', padding: 24, paddingTop: 32, borderRadius: 16, width: '80%', alignItems: 'center', borderWidth: 1, borderColor: '#334155' }}>
+            
+            <TouchableOpacity 
+              style={{ position: 'absolute', top: 12, right: 12, padding: 4 }}
+              onPress={handleCancel}
+            >
+              <Ionicons name="close" size={24} color="#94A3B8" />
+            </TouchableOpacity>
+
+            <Text style={{ color: '#F8FAFC', fontSize: 18, fontWeight: 'bold', marginBottom: 16 }}>Generating Video...</Text>
+            
+            <View style={{ width: '100%', height: 8, backgroundColor: '#0F172A', borderRadius: 4, marginBottom: 12, overflow: 'hidden' }}>
+              <View style={{ width: `${progress * 100}%`, height: '100%', backgroundColor: '#38BDF8', borderRadius: 4 }} />
+            </View>
+            <Text style={{ color: '#94A3B8', fontSize: 14 }}>{Math.round(progress * 100)}%</Text>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
