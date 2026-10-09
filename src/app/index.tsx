@@ -71,7 +71,7 @@ export default function HomeScreen() {
         <View style={styles.featuresContainer}>
           <View style={styles.featureBadge}>
             <Ionicons name="crop" size={14} color="#38BDF8" style={styles.featureIcon} />
-            <Text style={styles.featureText}>9:16 Auto-Fit</Text>
+            <Text style={styles.featureText}>Aspect Ratios: 9:16 • 1:1 • 16:9</Text>
           </View>
           <View style={styles.featureBadge}>
             <Ionicons name="sparkles" size={14} color="#38BDF8" style={styles.featureIcon} />

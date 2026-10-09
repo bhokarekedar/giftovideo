@@ -129,6 +129,27 @@ export default function MemeMakerScreen() {
   const [isSaving, setIsSaving] = useState(false);
   const [progress, setProgress] = useState(0);
   const [currentSession, setCurrentSession] = useState<any>(null);
+  const [aspectRatioStr, setAspectRatioStr] = useState<'9:16' | '1:1' | '16:9'>('9:16');
+
+  // Cache Cleanup on Mount
+  useEffect(() => {
+    async function clearCache() {
+      try {
+        const cacheDir = new FileSystem.Directory(FileSystem.Paths.cache);
+        const files = cacheDir.list();
+        for (const file of files) {
+          if (file.name.startsWith('meme_') || file.name.startsWith('ReactNative-snapshot-image')) {
+            try {
+              file.delete();
+            } catch (e) {}
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to clear cache', e);
+      }
+    }
+    clearCache();
+  }, []);
 
   const handleCancel = async () => {
     if (currentSession) {
@@ -200,24 +221,32 @@ export default function MemeMakerScreen() {
 
       let parsedDuration = parseInt(durationStr);
       if (isNaN(parsedDuration) || parsedDuration < 1) parsedDuration = 5;
-      if (parsedDuration > 60) parsedDuration = 60;
+      if (parsedDuration > 30) parsedDuration = 30;
       const durationSec = parsedDuration;
       setProgress(0);
 
+      const videoDimensions = {
+        '9:16': { w: 720, h: 1280 },
+        '1:1': { w: 1080, h: 1080 },
+        '16:9': { w: 1280, h: 720 }
+      };
+      const { w: outW, h: outH } = videoDimensions[aspectRatioStr];
+
       const gifScale = scale.value;
-      const gifTx = translateX.value * (720 / canvasLayout.width);
-      const gifTy = translateY.value * (1280 / canvasLayout.height);
+      const gifTx = translateX.value * (outW / canvasLayout.width);
+      const gifTy = translateY.value * (outH / canvasLayout.height);
 
       // Filter graph for blurring the background and placing gif, then text
+      // trunc(X/2)*2 ensures the dimension is divisible by 2 (required for libx264)
       let filterComplex = '';
       if (background === 'blur') {
-        filterComplex = `[0:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,boxblur=20:20[bg];[0:v]scale=720:1280:force_original_aspect_ratio=decrease,scale=iw*${gifScale}:ih*${gifScale}[fg];[bg][fg]overlay=(W-w)/2+(${gifTx}):(H-h)/2+(${gifTy})[vid];[1:v]scale=720:1280[ovrl];[vid][ovrl]overlay=0:0`;
+        filterComplex = `[0:v]scale=${outW}:${outH}:force_original_aspect_ratio=increase,crop=${outW}:${outH},boxblur=20:20[bg];[0:v]scale=${outW}:${outH}:force_original_aspect_ratio=decrease,scale=trunc(iw*${gifScale}/2)*2:trunc(ih*${gifScale}/2)*2[fg];[bg][fg]overlay=(W-w)/2+(${gifTx}):(H-h)/2+(${gifTy})[vid];[1:v]scale=${outW}:${outH}[ovrl];[vid][ovrl]overlay=0:0`;
       } else {
-        filterComplex = `[0:v]scale=720:1280:force_original_aspect_ratio=decrease,scale=iw*${gifScale}:ih*${gifScale}[fg];color=c=black:s=720x1280[bg];[bg][fg]overlay=(W-w)/2+(${gifTx}):(H-h)/2+(${gifTy})[vid];[1:v]scale=720:1280[ovrl];[vid][ovrl]overlay=0:0`;
+        filterComplex = `[0:v]scale=${outW}:${outH}:force_original_aspect_ratio=decrease,scale=trunc(iw*${gifScale}/2)*2:trunc(ih*${gifScale}/2)*2[fg];color=c=black:s=${outW}x${outH}[bg];[bg][fg]overlay=(W-w)/2+(${gifTx}):(H-h)/2+(${gifTy})[vid];[1:v]scale=${outW}:${outH}[ovrl];[vid][ovrl]overlay=0:0`;
       }
 
-      // Loop the GIF until the specified duration
-      const ffmpegCommand = `-stream_loop -1 -i "${cleanGifUri}" -i "${cleanOverlayUri}" -filter_complex "${filterComplex}" -t ${durationSec} -c:v mpeg4 -q:v 2 -y "${cleanOutputUri}"`;
+      // Loop the GIF until the specified duration, export with libx264 and 30fps
+      const ffmpegCommand = `-stream_loop -1 -i "${cleanGifUri}" -i "${cleanOverlayUri}" -filter_complex "${filterComplex}" -t ${durationSec} -c:v libx264 -preset ultrafast -pix_fmt yuv420p -r 30 -y "${cleanOutputUri}"`;
 
       const session = await FFmpegKit.executeAsync(
         ffmpegCommand,
@@ -379,7 +408,15 @@ export default function MemeMakerScreen() {
       >
         <View style={styles.canvasContainer}>
           <View 
-            style={[styles.canvas, hideMediaLayers && { backgroundColor: 'transparent', borderColor: 'transparent' }]} 
+            style={[
+              styles.canvas,
+              { 
+                width: '100%', 
+                maxHeight: '100%',
+                aspectRatio: aspectRatioStr === '9:16' ? 9 / 16 : aspectRatioStr === '16:9' ? 16 / 9 : 1 
+              },
+              hideMediaLayers && { backgroundColor: 'transparent', borderColor: 'transparent' }
+            ]} 
             ref={canvasRef} 
             collapsable={false}
             onLayout={(e) => setCanvasLayout(e.nativeEvent.layout)}
@@ -442,13 +479,26 @@ export default function MemeMakerScreen() {
               onBlur={() => {
                 let num = parseInt(durationStr);
                 if (isNaN(num) || num < 5) num = 5;
-                if (num > 60) num = 60;
+                if (num > 30) num = 30;
                 setDurationStr(num.toString());
                 setDuration(num);
               }}
             />
             <Text style={{ color: '#94A3B8', fontSize: 14, marginLeft: 2 }}>s</Text>
           </View>
+
+          {/* Aspect Ratio Toggle */}
+          <TouchableOpacity
+            style={[styles.toolbarBtn, { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }]}
+            onPress={() => {
+              setAspectRatioStr(prev => prev === '9:16' ? '1:1' : prev === '1:1' ? '16:9' : '9:16');
+            }}
+          >
+            <Ionicons name={aspectRatioStr === '9:16' ? 'phone-portrait-outline' : aspectRatioStr === '16:9' ? 'tv-outline' : 'square-outline'} size={16} color="#F8FAFC" style={{ marginRight: 6 }} />
+            <Text style={[styles.toolbarBtnText, { textAlign: 'center' }]}>
+              {aspectRatioStr}
+            </Text>
+          </TouchableOpacity>
 
           {/* Background Toggle */}
           <TouchableOpacity
@@ -477,7 +527,7 @@ export default function MemeMakerScreen() {
       {isEditingText && (
         <Modal transparent animationType="fade" visible={isEditingText}>
           <GestureHandlerRootView style={{ flex: 1 }}>
-            <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.7)' }} />
+            <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.3)' }} />
             <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
               <View style={{ flex: 1 }}>
 
@@ -505,11 +555,7 @@ export default function MemeMakerScreen() {
                   </View>
 
                   <View style={{ flex: 1, paddingRight: 60, justifyContent: 'center', alignItems: 'center' }}>
-                    <TextInput
-                      autoFocus
-                      multiline
-                      value={editorText}
-                      onChangeText={(t) => { setEditorText(t); updateActiveText({ text: t }); }}
+                    <Text
                       style={{
                         color: editorColor,
                         backgroundColor: editorBg === 'transparent' ? 'transparent' : editorBg,
@@ -517,19 +563,42 @@ export default function MemeMakerScreen() {
                         fontFamily: fontsLoaded && editorFont !== 'System' && editorFont !== 'serif' && editorFont !== 'monospace' ? editorFont : undefined,
                         fontWeight: editorFont === 'System' ? 'bold' : 'normal',
                         textAlign: 'center',
-                        minWidth: '50%',
                         paddingHorizontal: 16,
                         paddingVertical: 8,
-                        borderRadius: 12
+                        borderRadius: 12,
+                        minWidth: '50%',
                       }}
-                      placeholder="Type here..."
-                      placeholderTextColor="rgba(255,255,255,0.5)"
-                    />
+                    >
+                      {editorText || 'Preview...'}
+                    </Text>
                   </View>
                 </View>
 
                 {/* Bottom Toolbars Floating Above Keyboard */}
                 <View style={{ paddingBottom: 16 }}>
+
+                  {/* Standard Text Input */}
+                  <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
+                    <TextInput
+                      autoFocus
+                      multiline
+                      value={editorText}
+                      onChangeText={(t) => { setEditorText(t); updateActiveText({ text: t }); }}
+                      style={{
+                        backgroundColor: '#1E293B',
+                        color: '#F8FAFC',
+                        paddingHorizontal: 20,
+                        paddingVertical: 12,
+                        borderRadius: 24,
+                        borderWidth: 1,
+                        borderColor: '#334155',
+                        fontSize: 16,
+                        maxHeight: 100,
+                      }}
+                      placeholder="Type your meme text..."
+                      placeholderTextColor="#94A3B8"
+                    />
+                  </View>
 
                   {/* Floating Stickers / Presets Row (Always Visible) */}
                   <ScrollView
@@ -542,12 +611,13 @@ export default function MemeMakerScreen() {
                       <TouchableOpacity
                         key={preset.id}
                         onPress={() => {
-                          setEditorText(preset.text);
+                          const newText = editorText.trim() === '' ? preset.text : editorText;
+                          setEditorText(newText);
                           setEditorColor(preset.color);
                           setEditorBg(preset.bg);
                           setEditorSize(preset.size);
                           setEditorFont(preset.font);
-                          updateActiveText({ text: preset.text, color: preset.color, bg: preset.bg, size: preset.size, font: preset.font });
+                          updateActiveText({ text: newText, color: preset.color, bg: preset.bg, size: preset.size, font: preset.font });
                         }}
                         style={{
                           backgroundColor: preset.bg === 'transparent' ? 'rgba(255,255,255,0.2)' : preset.bg,
@@ -791,8 +861,6 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   canvas: {
-    flex: 1,
-    aspectRatio: 9 / 16,
     backgroundColor: '#1E293B',
     borderRadius: theme.radius.sm,
     justifyContent: 'center',
