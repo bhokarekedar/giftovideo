@@ -725,29 +725,44 @@ export default function MemeMakerScreen() {
             <View style={styles.actionSheetHandle} />
             <Text style={styles.actionSheetTitle}>Select Background</Text>
 
-            <TouchableOpacity style={styles.actionSheetOption} onPress={() => { setBackground('blur'); setIsBgModalVisible(false); }}>
-              <MaterialIcons name="blur-on" size={24} color="#F8FAFC" style={{ marginRight: 16 }} />
-              <Text style={styles.actionSheetOptionText}>Blur Effect</Text>
-              {background === 'blur' && <Ionicons name="checkmark" size={24} color="#38BDF8" />}
+            <TouchableOpacity 
+              style={[styles.actionSheetOption, background === 'blur' && styles.actionSheetOptionActive]} 
+              onPress={() => { setBackground('blur'); setIsBgModalVisible(false); }}
+            >
+              <View style={[styles.actionSheetIconWrapper, background === 'blur' && styles.actionSheetIconWrapperActive]}>
+                <MaterialIcons name="blur-on" size={22} color={background === 'blur' ? "#0F172A" : "#94A3B8"} />
+              </View>
+              <Text style={[styles.actionSheetOptionText, background === 'blur' && styles.actionSheetOptionTextActive]}>Blur Effect</Text>
+              {background === 'blur' && <Ionicons name="checkmark-circle" size={24} color="#38BDF8" />}
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.actionSheetOption} onPress={() => { setBackground('solid'); setIsBgModalVisible(false); }}>
-              <Ionicons name="color-fill" size={24} color="#F8FAFC" style={{ marginRight: 16 }} />
-              <Text style={styles.actionSheetOptionText}>Solid Dark</Text>
-              {background === 'solid' && <Ionicons name="checkmark" size={24} color="#38BDF8" />}
+            <TouchableOpacity 
+              style={[styles.actionSheetOption, background === 'solid' && styles.actionSheetOptionActive]} 
+              onPress={() => { setBackground('solid'); setIsBgModalVisible(false); }}
+            >
+              <View style={[styles.actionSheetIconWrapper, background === 'solid' && styles.actionSheetIconWrapperActive]}>
+                <Ionicons name="color-fill" size={22} color={background === 'solid' ? "#0F172A" : "#94A3B8"} />
+              </View>
+              <Text style={[styles.actionSheetOptionText, background === 'solid' && styles.actionSheetOptionTextActive]}>Solid Dark</Text>
+              {background === 'solid' && <Ionicons name="checkmark-circle" size={24} color="#38BDF8" />}
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.actionSheetOption} onPress={async () => {
-              setIsBgModalVisible(false);
-              const media = await MediaAssetService.pickImageAsset();
-              if (media && media.type === 'image') {
-                setCustomBgUri(media.uri);
-                setBackground('custom');
-              }
-            }}>
-              <Ionicons name="image" size={24} color="#F8FAFC" style={{ marginRight: 16 }} />
-              <Text style={styles.actionSheetOptionText}>Upload Custom Image...</Text>
-              {background === 'custom' && <Ionicons name="checkmark" size={24} color="#38BDF8" />}
+            <TouchableOpacity 
+              style={[styles.actionSheetOption, background === 'custom' && styles.actionSheetOptionActive]} 
+              onPress={async () => {
+                setIsBgModalVisible(false);
+                const media = await MediaAssetService.pickImageAsset();
+                if (media && media.type === 'image') {
+                  setCustomBgUri(media.uri);
+                  setBackground('custom');
+                }
+              }}
+            >
+              <View style={[styles.actionSheetIconWrapper, background === 'custom' && styles.actionSheetIconWrapperActive]}>
+                <Ionicons name="image" size={22} color={background === 'custom' ? "#0F172A" : "#94A3B8"} />
+              </View>
+              <Text style={[styles.actionSheetOptionText, background === 'custom' && styles.actionSheetOptionTextActive]}>Upload Custom Image...</Text>
+              {background === 'custom' && <Ionicons name="checkmark-circle" size={24} color="#38BDF8" />}
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.actionSheetCancel} onPress={() => setIsBgModalVisible(false)}>
@@ -935,40 +950,65 @@ const styles = StyleSheet.create({
   actionSheetOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(15, 23, 42, 0.75)', // Sophisticated dark slate overlay
   },
   actionSheetContainer: {
-    backgroundColor: '#1E293B',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    backgroundColor: '#0F172A',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.05)',
     padding: 24,
-    paddingBottom: 40,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 24,
   },
   actionSheetHandle: {
-    width: 40,
-    height: 4,
+    width: 48,
+    height: 5,
     backgroundColor: '#334155',
-    borderRadius: 2,
+    borderRadius: 2.5,
     alignSelf: 'center',
-    marginBottom: 20,
+    marginBottom: 24,
   },
   actionSheetTitle: {
     color: '#94A3B8',
-    fontSize: 14,
-    fontWeight: 'bold',
-    marginBottom: 16,
+    fontSize: 13,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+    marginBottom: 20,
     textAlign: 'center',
   },
   actionSheetOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#334155',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    backgroundColor: '#1E293B',
+    borderRadius: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
-  actionSheetOptionIcon: {
-    fontSize: 24,
+  actionSheetOptionActive: {
+    backgroundColor: 'rgba(56, 189, 248, 0.1)',
+    borderColor: 'rgba(56, 189, 248, 0.3)',
+  },
+  actionSheetIconWrapper: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#0F172A',
+    alignItems: 'center',
+    justifyContent: 'center',
     marginRight: 16,
+  },
+  actionSheetIconWrapperActive: {
+    backgroundColor: '#38BDF8',
   },
   actionSheetOptionText: {
     color: '#F8FAFC',
@@ -976,14 +1016,15 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     flex: 1,
   },
-  actionSheetOptionCheck: {
+  actionSheetOptionTextActive: {
     color: '#38BDF8',
-    fontSize: 18,
     fontWeight: 'bold',
   },
   actionSheetCancel: {
-    marginTop: 16,
+    marginTop: 8,
     paddingVertical: 16,
+    backgroundColor: '#1E293B',
+    borderRadius: 16,
     alignItems: 'center',
   },
   actionSheetCancelText: {
