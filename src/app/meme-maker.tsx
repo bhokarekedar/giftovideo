@@ -198,7 +198,10 @@ export default function MemeMakerScreen() {
       const cleanOverlayUri = overlayUri.replace('file://', '');
       const cleanOutputUri = outputUri.replace('file://', '');
 
-      const durationSec = duration || 5;
+      let parsedDuration = parseInt(durationStr);
+      if (isNaN(parsedDuration) || parsedDuration < 1) parsedDuration = 5;
+      if (parsedDuration > 60) parsedDuration = 60;
+      const durationSec = parsedDuration;
       setProgress(0);
 
       const gifScale = scale.value;
