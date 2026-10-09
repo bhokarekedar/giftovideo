@@ -239,14 +239,19 @@ export default function MemeMakerScreen() {
       // Filter graph for blurring the background and placing gif, then text
       // trunc(X/2)*2 ensures the dimension is divisible by 2 (required for libx264)
       let filterComplex = '';
-      if (background === 'blur') {
+      let ffmpegCommand = '';
+      
+      if (background === 'custom' && customBgUri) {
+        const cleanCustomBgUri = customBgUri.replace('file://', '');
+        filterComplex = `[2:v]scale=${outW}:${outH}:force_original_aspect_ratio=increase,crop=${outW}:${outH}[bg];[0:v]scale=${outW}:${outH}:force_original_aspect_ratio=decrease,scale=trunc(iw*${gifScale}/2)*2:trunc(ih*${gifScale}/2)*2[fg];[bg][fg]overlay=(W-w)/2+(${gifTx}):(H-h)/2+(${gifTy})[vid];[1:v]scale=${outW}:${outH}[ovrl];[vid][ovrl]overlay=0:0`;
+        ffmpegCommand = `-stream_loop -1 -i "${cleanGifUri}" -i "${cleanOverlayUri}" -loop 1 -i "${cleanCustomBgUri}" -filter_complex "${filterComplex}" -t ${durationSec} -c:v libx264 -preset ultrafast -pix_fmt yuv420p -r 30 -y "${cleanOutputUri}"`;
+      } else if (background === 'blur') {
         filterComplex = `[0:v]scale=${outW}:${outH}:force_original_aspect_ratio=increase,crop=${outW}:${outH},boxblur=20:20[bg];[0:v]scale=${outW}:${outH}:force_original_aspect_ratio=decrease,scale=trunc(iw*${gifScale}/2)*2:trunc(ih*${gifScale}/2)*2[fg];[bg][fg]overlay=(W-w)/2+(${gifTx}):(H-h)/2+(${gifTy})[vid];[1:v]scale=${outW}:${outH}[ovrl];[vid][ovrl]overlay=0:0`;
+        ffmpegCommand = `-stream_loop -1 -i "${cleanGifUri}" -i "${cleanOverlayUri}" -filter_complex "${filterComplex}" -t ${durationSec} -c:v libx264 -preset ultrafast -pix_fmt yuv420p -r 30 -y "${cleanOutputUri}"`;
       } else {
         filterComplex = `[0:v]scale=${outW}:${outH}:force_original_aspect_ratio=decrease,scale=trunc(iw*${gifScale}/2)*2:trunc(ih*${gifScale}/2)*2[fg];color=c=black:s=${outW}x${outH}[bg];[bg][fg]overlay=(W-w)/2+(${gifTx}):(H-h)/2+(${gifTy})[vid];[1:v]scale=${outW}:${outH}[ovrl];[vid][ovrl]overlay=0:0`;
+        ffmpegCommand = `-stream_loop -1 -i "${cleanGifUri}" -i "${cleanOverlayUri}" -filter_complex "${filterComplex}" -t ${durationSec} -c:v libx264 -preset ultrafast -pix_fmt yuv420p -r 30 -y "${cleanOutputUri}"`;
       }
-
-      // Loop the GIF until the specified duration, export with libx264 and 30fps
-      const ffmpegCommand = `-stream_loop -1 -i "${cleanGifUri}" -i "${cleanOverlayUri}" -filter_complex "${filterComplex}" -t ${durationSec} -c:v libx264 -preset ultrafast -pix_fmt yuv420p -r 30 -y "${cleanOutputUri}"`;
 
       const session = await FFmpegKit.executeAsync(
         ffmpegCommand,
@@ -469,57 +474,59 @@ export default function MemeMakerScreen() {
         {/* Single Row Bottom Toolbar */}
         <View style={styles.bottomToolbar}>
           {/* Duration Input */}
-          <View style={[styles.toolbarBtn, { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }]}>
-            <Ionicons name="timer-outline" size={16} color="#94A3B8" style={{ marginRight: 4 }} />
-            <TextInput
-              style={[styles.toolbarInput, { padding: 0, textAlign: 'center', minWidth: 20 }]}
-              keyboardType="number-pad"
-              value={durationStr}
-              onChangeText={setDurationStr}
-              onBlur={() => {
-                let num = parseInt(durationStr);
-                if (isNaN(num) || num < 5) num = 5;
-                if (num > 30) num = 30;
-                setDurationStr(num.toString());
-                setDuration(num);
-              }}
-            />
-            <Text style={{ color: '#94A3B8', fontSize: 14, marginLeft: 2 }}>s</Text>
+          <View style={[styles.toolbarBtn, { flex: 1, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 60, gap: 4 }]}>
+            <Ionicons name="timer-outline" size={20} color="#94A3B8" />
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <TextInput
+                style={[styles.toolbarInput, { padding: 0, textAlign: 'center', minWidth: 16, fontSize: 12, lineHeight: 14 }]}
+                keyboardType="number-pad"
+                value={durationStr}
+                onChangeText={setDurationStr}
+                onBlur={() => {
+                  let num = parseInt(durationStr);
+                  if (isNaN(num) || num < 5) num = 5;
+                  if (num > 30) num = 30;
+                  setDurationStr(num.toString());
+                  setDuration(num);
+                }}
+              />
+              <Text style={{ color: '#94A3B8', fontSize: 12, lineHeight: 14, marginLeft: 2 }}>s</Text>
+            </View>
           </View>
 
           {/* Aspect Ratio Toggle */}
           <TouchableOpacity
-            style={[styles.toolbarBtn, { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }]}
+            style={[styles.toolbarBtn, { flex: 1, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 60, gap: 4 }]}
             onPress={() => {
               setAspectRatioStr(prev => prev === '9:16' ? '1:1' : prev === '1:1' ? '16:9' : '9:16');
             }}
           >
-            <Ionicons name={aspectRatioStr === '9:16' ? 'phone-portrait-outline' : aspectRatioStr === '16:9' ? 'tv-outline' : 'square-outline'} size={16} color="#F8FAFC" style={{ marginRight: 6 }} />
-            <Text style={[styles.toolbarBtnText, { textAlign: 'center' }]}>
+            <Ionicons name={aspectRatioStr === '9:16' ? 'phone-portrait-outline' : aspectRatioStr === '16:9' ? 'tv-outline' : 'square-outline'} size={20} color="#F8FAFC" />
+            <Text style={[styles.toolbarBtnText, { textAlign: 'center', fontSize: 12, lineHeight: 14, fontWeight: '600' }]}>
               {aspectRatioStr}
             </Text>
           </TouchableOpacity>
 
           {/* Background Toggle */}
           <TouchableOpacity
-            style={[styles.toolbarBtn, { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }]}
+            style={[styles.toolbarBtn, { flex: 1, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 60, gap: 4 }]}
             onPress={() => setIsBgModalVisible(true)}
           >
-            {background === 'blur' ? <MaterialIcons name="blur-on" size={16} color="#F8FAFC" style={{ marginRight: 6 }} /> :
-              background === 'solid' ? <Ionicons name="color-fill" size={16} color="#F8FAFC" style={{ marginRight: 6 }} /> :
-                <Ionicons name="image" size={16} color="#F8FAFC" style={{ marginRight: 6 }} />}
-            <Text style={[styles.toolbarBtnText, { textAlign: 'center' }]}>
+            {background === 'blur' ? <MaterialIcons name="blur-on" size={20} color="#F8FAFC" /> :
+              background === 'solid' ? <Ionicons name="color-fill" size={20} color="#F8FAFC" /> :
+                <Ionicons name="image" size={20} color="#F8FAFC" />}
+            <Text style={[styles.toolbarBtnText, { textAlign: 'center', fontSize: 12, lineHeight: 14, fontWeight: '600' }]}>
               {background === 'blur' ? 'Blur' : background === 'solid' ? 'Solid' : 'Custom'}
             </Text>
           </TouchableOpacity>
 
           {/* Add Text Button */}
           <TouchableOpacity
-            style={[styles.toolbarPrimaryBtn, { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }]}
+            style={[styles.toolbarPrimaryBtn, { flex: 1, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 60, gap: 4 }]}
             onPress={() => handleOpenEditor()}
           >
-            <Ionicons name="text" size={16} color="#0F172A" style={{ marginRight: 6 }} />
-            <Text style={[styles.toolbarPrimaryBtnText, { textAlign: 'center' }]}>Add Text</Text>
+            <Ionicons name="text" size={20} color="#0F172A" />
+            <Text style={[styles.toolbarPrimaryBtnText, { textAlign: 'center', fontSize: 12, lineHeight: 14, fontWeight: '700' }]}>Text</Text>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -732,7 +739,7 @@ export default function MemeMakerScreen() {
 
             <TouchableOpacity style={styles.actionSheetOption} onPress={async () => {
               setIsBgModalVisible(false);
-              const media = await MediaAssetService.pickVideoAsset();
+              const media = await MediaAssetService.pickImageAsset();
               if (media && media.type === 'image') {
                 setCustomBgUri(media.uri);
                 setBackground('custom');

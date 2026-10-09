@@ -135,7 +135,7 @@ export default function HomeScreen() {
           onPress={handleStart}
         >
           <Ionicons name="add-circle" size={28} color="#0F172A" style={styles.mainButtonIcon} />
-          <Text style={styles.mainButtonText}>Choose GIF / Image</Text>
+          <Text style={styles.mainButtonText}>Choose GIF</Text>
         </TouchableOpacity>
         <SafeAreaView edges={['bottom']} style={{ width: '100%' }}>
           <Text style={styles.microText}>Auto-formats and loops perfectly.</Text>
