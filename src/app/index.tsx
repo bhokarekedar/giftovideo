@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -11,6 +11,32 @@ const SAMPLE_IMAGE_URL = 'https://picsum.photos/seed/meme/400/400';
 
 export default function HomeScreen() {
   const router = useRouter();
+  const [tapCount, setTapCount] = useState(0);
+  const [isUnlocked, setIsUnlocked] = useState(false);
+  const tapTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  const showMemeMaker = __DEV__ || isUnlocked;
+
+  const handleSecretTap = () => {
+    setTapCount(prev => {
+      const next = prev + 1;
+      if (next >= 20) {
+        setIsUnlocked(true);
+      }
+      return next;
+    });
+
+    // Clear previous timeout
+    if (tapTimeoutRef.current) {
+      clearTimeout(tapTimeoutRef.current);
+    }
+    
+    // Reset the count if they stop tapping for more than 1 second.
+    // This makes it physically impossible to do accidentally!
+    tapTimeoutRef.current = setTimeout(() => {
+      setTapCount(0);
+    }, 1000);
+  };
 
   const handleStart = () => {
     router.push('/meme-maker');
@@ -24,9 +50,8 @@ export default function HomeScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* 1. Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>GIF to Reel</Text>
-        <TouchableOpacity style={styles.headerIcon}>
-          <Ionicons name="settings-outline" size={24} color="#64748B" />
+        <TouchableOpacity activeOpacity={1} onPress={handleSecretTap}>
+          <Text style={styles.headerTitle}>GIF to Reel</Text>
         </TouchableOpacity>
       </View>
 
@@ -91,6 +116,21 @@ export default function HomeScreen() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.samplesScroll}
           >
+            {showMemeMaker && (
+              <TouchableOpacity
+                style={[styles.sampleCard, { borderWidth: 2, borderColor: '#A855F7' }]}
+                activeOpacity={0.7}
+                onPress={() => router.push('/ai-meme')}
+              >
+                <View style={[styles.sampleCardImage, { backgroundColor: '#581C87', justifyContent: 'center', alignItems: 'center' }]}>
+                  <Text style={{ fontSize: 40 }}>✨</Text>
+                </View>
+                <View style={styles.sampleCardOverlay}>
+                  <Text style={styles.sampleCardText}>AI Meme Maker</Text>
+                  <Text style={{ color: '#D8B4FE', fontSize: 9, fontWeight: 'bold' }}>Text/Image to GIF</Text>
+                </View>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               style={styles.sampleCard}
               activeOpacity={0.7}
@@ -151,7 +191,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#0F172A', // Deep slate dark mode
   },
   scrollContent: {
-    paddingBottom: 120, // space for sticky footer
+    paddingBottom: 150, // space for sticky footer
   },
 
   // 1. Header
