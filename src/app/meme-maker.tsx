@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Image, TextInput, KeyboardAvoidingView, Platform, ScrollView, Modal, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Image, TextInput, KeyboardAvoidingView, Platform, ScrollView, Modal, Alert, NativeModules } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
@@ -73,9 +73,9 @@ export default function MemeMakerScreen() {
         id: Date.now().toString(),
         text: initialText as string,
         color: '#FFFFFF',
-        bg: 'transparent',
-        size: 36,
-        font: 'Anton'
+        bg: 'rgba(0,0,0,0.6)',
+        size: 18,
+        font: 'System'
       }]);
     }
   }, [templateId, initialText]);
@@ -182,7 +182,7 @@ export default function MemeMakerScreen() {
       setProgress(0); // Reset immediately so UI doesn't flash old progress
 
       // EXPO GO FALLBACK (Save as image via sharing)
-      if (!MediaLibrary || !FFmpegKit) {
+      if (!MediaLibrary || !FFmpegKit || !NativeModules.FFmpegKitModule) {
         Alert.alert(
           'Expo Go Mode',
           'Video generation requires a native build. Would you like to share an image snapshot instead?',
@@ -551,7 +551,7 @@ export default function MemeMakerScreen() {
         <Modal transparent animationType="fade" visible={isEditingText}>
           <GestureHandlerRootView style={{ flex: 1 }}>
             <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.3)' }} />
-            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'padding'} style={{ flex: 1 }}>
               <View style={{ flex: 1 }}>
 
                 {/* Top Toolbar */}
@@ -580,7 +580,7 @@ export default function MemeMakerScreen() {
                 </View>
 
                 {/* Bottom Toolbars Floating Above Keyboard */}
-                <View style={{ backgroundColor: '#0F172A', borderTopWidth: 1, borderColor: '#1E293B', paddingVertical: 12 }}>
+                <SafeAreaView edges={['bottom']} style={{ backgroundColor: '#0F172A', borderTopWidth: 1, borderColor: '#1E293B', paddingTop: 12, paddingBottom: Platform.OS === 'ios' ? 0 : 12 }}>
 
                   {/* Standard Text Input */}
                   <View style={{ paddingHorizontal: 16, marginBottom: 12 }}>
@@ -707,7 +707,7 @@ export default function MemeMakerScreen() {
                       </View>
                     )}
                   </View>
-                </View>
+                </SafeAreaView>
               </View>
             </KeyboardAvoidingView>
 
