@@ -26,26 +26,25 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { theme } from '../core/theme';
 import { MediaAssetService } from '../core/media/MediaAssetService';
 import ColorPickerModal from '../components/ColorPickerModal';
+import CustomPresetModal from '../components/CustomPresetModal';
+import {
+  PresetItem,
+  BUILTIN_STICKER_PRESETS,
+  CustomPresetStorage,
+} from '../core/presets/CustomPresetStorage';
+import {
+  CustomFontItem,
+  BUILTIN_FONTS,
+  CustomFontStorage,
+} from '../core/fonts/CustomFontStorage';
+
 
 const { width } = Dimensions.get('window');
 const CANVAS_WIDTH = width * 0.55;
 const CANVAS_HEIGHT = CANVAS_WIDTH * (16 / 9);
 
-const STICKER_PRESETS = [
-  { id: 'st0', label: 'Long Text', text: 'Long text', color: '#FFFFFF', bg: 'rgba(0,0,0,0.6)', size: 18, font: 'System' },
-  { id: 'st1', label: 'TOP TEXT', text: 'TOP TEXT', color: '#FFFFFF', bg: 'transparent', size: 36, font: 'Anton' },
-  { id: 'st2', label: 'NEWS', text: 'BREAKING NEWS', color: '#FFFFFF', bg: '#EF4444', size: 28, font: 'Bebas Neue' },
-  { id: 'st3', label: 'POV', text: 'POV:', color: '#FFFFFF', bg: 'transparent', size: 32, font: 'System' },
-  { id: 'st4', label: 'WAIT', text: 'WAIT FOR IT', color: '#FACC15', bg: '#000000', size: 28, font: 'Anton' },
-  { id: 'st5', label: 'Quote', text: '💬 Who said that?', color: '#000000', bg: '#FFFFFF', size: 20, font: 'Comic Neue' },
-  { id: 'st6', label: 'vibes', text: 'v i b e s', color: '#FFFFFF', bg: '#A855F7', size: 24, font: 'serif' },
-  { id: 'st7', label: 'Me', text: '"Literally me"', color: '#FFFFFF', bg: 'transparent', size: 26, font: 'System' },
-  { id: 'st8', label: 'hello', text: 'hello.', color: '#000000', bg: '#F8FAFC', size: 18, font: 'monospace' },
-  { id: 'st9', label: 'CAUTION', text: '⚠️ CAUTION', color: '#000000', bg: '#FACC15', size: 24, font: 'Bebas Neue' },
-  { id: 'st10', label: '10/10', text: '10/10 WOULD RECOMMEND', color: '#FFFFFF', bg: '#22C55E', size: 20, font: 'Bebas Neue' },
-  { id: 'st11', label: 'Verified', text: 'Verified ✅', color: '#FFFFFF', bg: '#38BDF8', size: 22, font: 'System' },
-  { id: 'st12', label: 'darkness', text: 'darkness', color: '#FFFFFF', bg: '#0F172A', size: 24, font: 'monospace' },
-];
+const STICKER_PRESETS = BUILTIN_STICKER_PRESETS;
+
 
 export default function MemeMakerScreen() {
   const router = useRouter();
@@ -55,9 +54,28 @@ export default function MemeMakerScreen() {
   // Text Editor State (Multiple Texts)
   const [texts, setTexts] = useState<any[]>([]);
 
+  // Custom & Builtin Presets State
+  const [customPresets, setCustomPresets] = useState<PresetItem[]>([]);
+  const [isCustomPresetModalVisible, setIsCustomPresetModalVisible] = useState(false);
+
+  // Load custom presets from local storage on mount
+  useEffect(() => {
+    async function loadPresets() {
+      try {
+        const stored = await CustomPresetStorage.getCustomPresets();
+        setCustomPresets(stored);
+      } catch (err) {
+        console.error('Failed to load presets', err);
+      }
+    }
+    loadPresets();
+  }, []);
+
+  const allPresets = [...customPresets, ...BUILTIN_STICKER_PRESETS];
+
   useEffect(() => {
     if (templateId) {
-      const preset = STICKER_PRESETS.find(p => p.id === templateId);
+      const preset = allPresets.find(p => p.id === templateId) || BUILTIN_STICKER_PRESETS.find(p => p.id === templateId);
       if (preset) {
         setTexts([{
           id: Date.now().toString(),
@@ -80,51 +98,127 @@ export default function MemeMakerScreen() {
     }
   }, [templateId, initialText]);
 
+
   // Custom Fonts State
   const [fontsLoaded, setFontsLoaded] = useState(false);
-  const [availableFonts, setAvailableFonts] = useState(['System', 'serif', 'monospace', 'Anton', 'Bebas Neue', 'Comic Neue']);
+  const [customFontsList, setCustomFontsList] = useState<CustomFontItem[]>([]);
+  const [availableFonts, setAvailableFonts] = useState<string[]>([...BUILTIN_FONTS]);
 
   useEffect(() => {
-    async function loadPredefinedFonts() {
+    async function loadAllFonts() {
       try {
         await Font.loadAsync({
           'Anton': require('../../assets/fonts/Anton-Regular.ttf'),
           'Bebas Neue': require('../../assets/fonts/BebasNeue-Regular.ttf'),
           'Comic Neue': require('../../assets/fonts/ComicNeue-Bold.ttf'),
         });
-        setFontsLoaded(true);
       } catch (e) {
-        console.warn('Error loading preset fonts', e);
+        console.warn('Error loading predefined fonts', e);
+      }
+
+      // Load saved custom fonts from device storage
+      try {
+        const savedCustomFonts = await CustomFontStorage.getCustomFonts();
+        setCustomFontsList(savedCustomFonts);
+        const loadedNames = await CustomFontStorage.loadAllSavedFonts();
+        setAvailableFonts(prev => {
+          const unique = new Set([...BUILTIN_FONTS, ...loadedNames]);
+          return Array.from(unique);
+        });
+      } catch (err) {
+        console.warn('Error loading custom fonts from storage', err);
+      } finally {
         setFontsLoaded(true);
       }
     }
-    loadPredefinedFonts();
+
+    loadAllFonts();
   }, []);
 
   const handleUploadFont = async () => {
     try {
-      const result = await DocumentPicker.getDocumentAsync({ type: ['*/*'] });
-      if (result.canceled || !result.assets || result.assets.length === 0) return;
+      let pickedFile: FileSystem.File | null = null;
+      let fileName = 'CustomFont.ttf';
 
-      const file = result.assets[0];
-      let fontName = file.name.split('.')[0];
-      // Keep it unique if needed, but simple name is fine for now
+      // 1. First attempt: Modern Expo FileSystem.File.pickFileAsync (grants direct native read permissions)
+      try {
+        const filePickerResult = await FileSystem.File.pickFileAsync({
+          mimeTypes: ['font/*', 'application/x-font-ttf', 'application/x-font-otf', 'application/font-woff', '*/*'],
+        });
+        if (filePickerResult && !filePickerResult.canceled && filePickerResult.result) {
+          pickedFile = filePickerResult.result;
+          fileName = pickedFile.name || 'CustomFont.ttf';
+        } else if (filePickerResult && filePickerResult.canceled) {
+          return; // User cancelled
+        }
+      } catch (pickErr) {
+        console.warn('File.pickFileAsync failed or unavailable, trying DocumentPicker fallback:', pickErr);
+      }
 
-      await Font.loadAsync({
-        [fontName]: { uri: file.uri }
+      // 2. Second attempt: DocumentPicker fallback
+      if (!pickedFile) {
+        const docResult = await DocumentPicker.getDocumentAsync({
+          type: ['font/*', 'application/x-font-ttf', 'application/x-font-otf', 'application/font-woff', '*/*'],
+          copyToCacheDirectory: false, // Prevents Android cache sandbox permission errors in Expo Go
+        });
+
+        if (docResult.canceled || !docResult.assets || docResult.assets.length === 0) return;
+        const asset = docResult.assets[0];
+        fileName = asset.name || 'CustomFont.ttf';
+        pickedFile = new FileSystem.File(asset.uri);
+      }
+
+      const savedFontItem = await CustomFontStorage.saveFont(pickedFile, fileName);
+
+
+
+      setCustomFontsList(prev => [savedFontItem, ...prev.filter(f => f.name !== savedFontItem.name)]);
+      setAvailableFonts(prev => {
+        const unique = new Set([...prev, savedFontItem.name]);
+        return Array.from(unique);
       });
 
-      setAvailableFonts(prev => [...prev, fontName]);
-      setEditorFont(fontName);
+      setEditorFont(savedFontItem.name);
       if (isEditingText) {
-        updateActiveText({ font: fontName });
+        updateActiveText({ font: savedFontItem.name });
       }
-      Alert.alert('Font Loaded', `Custom font "${fontName}" applied!`);
-    } catch (e) {
+
+      Alert.alert('Font Saved', `Custom font "${savedFontItem.name}" has been saved and applied!`);
+    } catch (e: any) {
       console.error(e);
-      Alert.alert('Error', 'Failed to load custom font.');
+      Alert.alert('Error', `Failed to load and save font: ${e?.message || e}`);
     }
   };
+
+  const handleDeleteCustomFont = (fontItem: CustomFontItem) => {
+    Alert.alert(
+      'Delete Font',
+      `Are you sure you want to delete the custom font "${fontItem.name}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const updated = await CustomFontStorage.deleteFont(fontItem.id);
+              setCustomFontsList(updated);
+              setAvailableFonts(prev => prev.filter(f => f !== fontItem.name));
+
+              // If currently selected, revert back to System
+              if (editorFont === fontItem.name) {
+                setEditorFont('System');
+                updateActiveText({ font: 'System' });
+              }
+            } catch (err: any) {
+              Alert.alert('Error', `Failed to delete custom font: ${err?.message || err}`);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const [duration, setDuration] = useState<number>(5);
   const [durationStr, setDurationStr] = useState<string>('5');
   const [background, setBackground] = useState<'blur' | 'solid' | 'custom'>('blur');
@@ -385,6 +479,39 @@ export default function MemeMakerScreen() {
     setTexts(prev => prev.filter(t => t.id !== editingId));
     setIsEditingText(false);
   };
+
+  const handleSaveCustomPreset = async (presetData: Omit<PresetItem, 'id' | 'isCustom'>) => {
+    try {
+      const updated = await CustomPresetStorage.saveCustomPreset(presetData);
+      setCustomPresets(updated);
+      Alert.alert('Preset Saved', `Custom preset "${presetData.label}" saved successfully!`);
+    } catch (e) {
+      Alert.alert('Error', 'Failed to save custom preset.');
+    }
+  };
+
+  const handleDeleteCustomPreset = (preset: PresetItem) => {
+    Alert.alert(
+      'Delete Preset',
+      `Are you sure you want to delete "${preset.label}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const updated = await CustomPresetStorage.deleteCustomPreset(preset.id);
+              setCustomPresets(updated);
+            } catch (e) {
+              Alert.alert('Error', 'Failed to delete custom preset.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
 
   // GIF Gesture State
   const scale = useSharedValue(1);
@@ -664,39 +791,92 @@ export default function MemeMakerScreen() {
                         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
                           {activeTool === 'presets' && (
                             <>
-                              {STICKER_PRESETS.map(preset => (
-                                <TouchableOpacity
-                                  key={preset.id}
-                                  onPress={() => {
-                                    const newText = editorText.trim() === '' ? preset.text : editorText;
-                                    setEditorText(newText);
-                                    setEditorColor(preset.color);
-                                    setEditorBg(preset.bg);
-                                    setEditorSize(preset.size);
-                                    setEditorFont(preset.font);
-                                    updateActiveText({ text: newText, color: preset.color, bg: preset.bg, size: preset.size, font: preset.font });
-                                  }}
-                                  style={{
-                                    backgroundColor: preset.bg === 'transparent' ? '#1E293B' : preset.bg,
-                                    paddingHorizontal: 16,
-                                    paddingVertical: 8,
-                                    borderRadius: 20,
-                                    borderWidth: 1,
-                                    borderColor: preset.bg === 'transparent' ? '#334155' : 'rgba(255,255,255,0.2)',
-                                    justifyContent: 'center',
-                                    alignItems: 'center'
-                                  }}
-                                >
-                                  <Text style={{
-                                    color: preset.color,
-                                    fontSize: 14,
-                                    fontWeight: preset.font === 'System' ? 'bold' : 'normal',
-                                    fontFamily: preset.font !== 'System' && preset.font !== 'serif' && preset.font !== 'monospace' ? preset.font : undefined
-                                  }}>
-                                    {preset.label || preset.text}
-                                  </Text>
-                                </TouchableOpacity>
-                              ))}
+                              {/* Create / Save Custom Preset Action Button */}
+                              <TouchableOpacity
+                                onPress={() => setIsCustomPresetModalVisible(true)}
+                                style={{
+                                  backgroundColor: 'rgba(168, 85, 247, 0.15)',
+                                  paddingHorizontal: 14,
+                                  paddingVertical: 8,
+                                  borderRadius: 20,
+                                  borderWidth: 1.5,
+                                  borderStyle: 'dashed',
+                                  borderColor: '#A855F7',
+                                  flexDirection: 'row',
+                                  alignItems: 'center',
+                                  gap: 6,
+                                }}
+                              >
+                                <Ionicons name="add-circle" size={16} color="#C084FC" />
+                                <Text style={{ color: '#E9D5FF', fontSize: 13, fontWeight: '700' }}>
+                                  + Custom
+                                </Text>
+                              </TouchableOpacity>
+
+                              {/* All Presets List (Custom first with badge and X button, then builtin) */}
+                              {allPresets.map(preset => {
+                                const isCustom = !!preset.isCustom;
+                                return (
+                                  <View
+                                    key={preset.id}
+                                    style={{
+                                      flexDirection: 'row',
+                                      alignItems: 'center',
+                                      backgroundColor: preset.bg === 'transparent' ? '#1E293B' : preset.bg,
+                                      borderRadius: 20,
+                                      borderWidth: 1,
+                                      borderColor: isCustom ? '#A855F7' : preset.bg === 'transparent' ? '#334155' : 'rgba(255,255,255,0.2)',
+                                      paddingLeft: 14,
+                                      paddingRight: isCustom ? 8 : 14,
+                                      paddingVertical: 6,
+                                    }}
+                                  >
+                                    <TouchableOpacity
+                                      onPress={() => {
+                                        const newText = editorText.trim() === '' ? preset.text : editorText;
+                                        setEditorText(newText);
+                                        setEditorColor(preset.color);
+                                        setEditorBg(preset.bg);
+                                        setEditorSize(preset.size);
+                                        setEditorFont(preset.font);
+                                        updateActiveText({ text: newText, color: preset.color, bg: preset.bg, size: preset.size, font: preset.font });
+                                      }}
+                                      style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                                    >
+                                      {isCustom && (
+                                        <Ionicons name="sparkles" size={12} color="#C084FC" />
+                                      )}
+                                      <Text style={{
+                                        color: preset.color,
+                                        fontSize: 14,
+                                        fontWeight: preset.font === 'System' ? 'bold' : 'normal',
+                                        fontFamily: preset.font !== 'System' && preset.font !== 'serif' && preset.font !== 'monospace' ? preset.font : undefined
+                                      }}>
+                                        {preset.label || preset.text}
+                                      </Text>
+                                    </TouchableOpacity>
+
+                                    {/* Delete icon at extreme right for custom presets */}
+                                    {isCustom && (
+                                      <TouchableOpacity
+                                        onPress={() => handleDeleteCustomPreset(preset)}
+                                        hitSlop={8}
+                                        style={{
+                                          marginLeft: 8,
+                                          width: 20,
+                                          height: 20,
+                                          borderRadius: 10,
+                                          backgroundColor: 'rgba(0,0,0,0.4)',
+                                          justifyContent: 'center',
+                                          alignItems: 'center',
+                                        }}
+                                      >
+                                        <Ionicons name="close" size={13} color="#F87171" />
+                                      </TouchableOpacity>
+                                    )}
+                                  </View>
+                                );
+                              })}
                             </>
                           )}
                           {activeTool === 'color' && (
@@ -722,15 +902,91 @@ export default function MemeMakerScreen() {
                             </>
                           )}
                           {activeTool === 'font' && (
-                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                              <TouchableOpacity onPress={handleUploadFont} style={[styles.categoryBtn, { backgroundColor: '#38BDF8', borderColor: '#0EA5E9', marginRight: 12 }]}>
-                                <Text style={[styles.categoryBtnText, { color: '#0F172A' }]}>Upload Font 📤</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                              <TouchableOpacity
+                                onPress={handleUploadFont}
+                                style={[
+                                  styles.categoryBtn,
+                                  {
+                                    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                                    borderColor: '#38BDF8',
+                                    borderStyle: 'dashed',
+                                    borderWidth: 1.5,
+                                    marginRight: 4,
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    gap: 6,
+                                  },
+                                ]}
+                              >
+                                <Ionicons name="cloud-upload-outline" size={16} color="#38BDF8" />
+                                <Text style={[styles.categoryBtnText, { color: '#38BDF8' }]}>+ Upload Font</Text>
                               </TouchableOpacity>
-                              {availableFonts.map(font => (
-                                <TouchableOpacity key={`font-${font}`} onPress={() => { setEditorFont(font); updateActiveText({ font }); }} style={[styles.categoryBtn, { backgroundColor: editorFont === font ? '#334155' : '#1E293B', borderWidth: 1, borderColor: editorFont === font ? '#38BDF8' : '#334155', marginRight: 8 }]}>
-                                  <Text style={[styles.categoryBtnText, { fontFamily: fontsLoaded && font !== 'System' && font !== 'serif' && font !== 'monospace' ? font : undefined, color: '#F8FAFC' }]}>{font}</Text>
-                                </TouchableOpacity>
-                              ))}
+
+                              {availableFonts.map(font => {
+                                const customItem = customFontsList.find(cf => cf.name === font);
+                                const isCustom = !!customItem;
+                                const isSelected = editorFont === font;
+
+                                return (
+                                  <View
+                                    key={`font-${font}`}
+                                    style={{
+                                      flexDirection: 'row',
+                                      alignItems: 'center',
+                                      backgroundColor: isSelected ? '#334155' : '#1E293B',
+                                      borderRadius: 100,
+                                      borderWidth: 1,
+                                      borderColor: isSelected ? (isCustom ? '#A855F7' : '#38BDF8') : (isCustom ? '#6D28D9' : '#334155'),
+                                      paddingLeft: 14,
+                                      paddingRight: isCustom ? 8 : 14,
+                                      paddingVertical: 6,
+                                    }}
+                                  >
+                                    <TouchableOpacity
+                                      onPress={() => {
+                                        setEditorFont(font);
+                                        updateActiveText({ font });
+                                      }}
+                                      style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                                    >
+                                      {isCustom && (
+                                        <Ionicons name="sparkles" size={12} color="#C084FC" />
+                                      )}
+                                      <Text
+                                        style={[
+                                          styles.categoryBtnText,
+                                          {
+                                            fontFamily: fontsLoaded && font !== 'System' && font !== 'serif' && font !== 'monospace' ? font : undefined,
+                                            color: isSelected ? '#F8FAFC' : '#94A3B8',
+                                          },
+                                        ]}
+                                      >
+                                        {font}
+                                      </Text>
+                                    </TouchableOpacity>
+
+                                    {/* Delete icon for custom uploaded fonts */}
+                                    {isCustom && customItem && (
+                                      <TouchableOpacity
+                                        onPress={() => handleDeleteCustomFont(customItem)}
+                                        hitSlop={8}
+                                        style={{
+                                          marginLeft: 8,
+                                          width: 20,
+                                          height: 20,
+                                          borderRadius: 10,
+                                          backgroundColor: 'rgba(0,0,0,0.4)',
+                                          justifyContent: 'center',
+                                          alignItems: 'center',
+                                        }}
+                                      >
+                                        <Ionicons name="close" size={13} color="#F87171" />
+                                      </TouchableOpacity>
+                                    )}
+                                  </View>
+                                );
+                              })}
                             </View>
                           )}
                         </ScrollView>
@@ -813,6 +1069,20 @@ export default function MemeMakerScreen() {
         }}
         onClose={() => setPickerTarget(null)}
       />
+
+      {/* Custom Preset Creator / Configurator Modal */}
+      <CustomPresetModal
+        visible={isCustomPresetModalVisible}
+        onClose={() => setIsCustomPresetModalVisible(false)}
+        onSave={handleSaveCustomPreset}
+        availableFonts={availableFonts}
+        initialColor={editorColor}
+        initialBg={editorBg}
+        initialFont={editorFont}
+        initialSize={editorSize}
+        initialText={editorText}
+      />
+
 
       <Modal visible={isSaving} transparent animationType="fade">
         <View style={{ flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.9)', justifyContent: 'center', alignItems: 'center' }}>
