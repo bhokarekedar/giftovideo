@@ -20,68 +20,76 @@ export default function AiMemeScreen() {
   const [results, setResults] = useState<GiphyGif[]>([]);
   const [selectedGif, setSelectedGif] = useState<GiphyGif | null>(null);
 
-  const handleImagePick = async () => {
-    try {
-      const media = await MediaAssetService.pickImageAsset();
-      if (!media) return;
-
-      setIsGenerating(true);
-      setLoadingStep('Extracting text from image...');
-      
-      const file = new FileSystem.File(media.uri);
-      const base64 = await file.base64();
-      
-      const extractedText = await AiMemeService.extractTextFromImage(base64);
-      
-      setInputText(extractedText);
-    } catch (error: any) {
-      Alert.alert('OCR Error', error.message || 'Failed to extract text from the image.');
-    } finally {
-      setIsGenerating(false);
-      setLoadingStep('');
-    }
-  };
-
-  const handleGenerate = async () => {
-    if (!inputText.trim()) {
-      Alert.alert('Oops', 'Please enter a joke, quote, or thought first!');
-      return;
-    }
-
+  const executeGenerate = async (textToUse: string) => {
     setIsGenerating(true);
     setResults([]);
     setSelectedGif(null);
 
     try {
       setLoadingStep('Analyzing vibe with LLM...');
-      const reaction = await AiMemeService.analyzeTextForReaction(inputText);
+      const reaction = await AiMemeService.analyzeTextForReaction(textToUse);
 
       setLoadingStep('Searching the Giphy archives...');
       
-      let gifs: GiphyGif[] = [];
-      let usedQuery = '';
-
       console.log('--- AI MEME MAKER LOGS ---');
       console.log('LLM Raw Output:', JSON.stringify(reaction, null, 2));
 
-      // Fallback flow: Try each query one by one until we get results
-      for (const query of reaction.searchQueries) {
-        console.log('Searching Giphy For:', query);
-        gifs = await GifSearchService.searchGifs(query, 5);
-        if (gifs.length > 0) {
-          usedQuery = query;
-          break; // Stop searching once we find good results!
+      // Fetch GIFs across queries in parallel for high variety and hit rate
+      const queriesToTry = (reaction.searchQueries || []).slice(0, 6);
+      const queryResults = await Promise.allSettled(
+        queriesToTry.map((q) => GifSearchService.searchGifs(q, 4))
+      );
+
+      const seenIds = new Set<string>();
+      let gifs: GiphyGif[] = [];
+
+      for (const res of queryResults) {
+        if (res.status === 'fulfilled' && Array.isArray(res.value)) {
+          for (const gif of res.value) {
+            if (!seenIds.has(gif.id)) {
+              seenIds.add(gif.id);
+              gifs.push(gif);
+            }
+          }
         }
       }
 
-      // If all specific queries fail, try the raw emotion as a final fallback
-      if (gifs.length === 0) {
+      // If still empty or very few, try remaining queries
+      if (gifs.length === 0 && reaction.searchQueries && reaction.searchQueries.length > 6) {
+        for (const q of reaction.searchQueries.slice(6)) {
+          try {
+            const fallbackGifs = await GifSearchService.searchGifs(q, 5);
+            for (const gif of fallbackGifs) {
+              if (!seenIds.has(gif.id)) {
+                seenIds.add(gif.id);
+                gifs.push(gif);
+              }
+            }
+            if (gifs.length > 0) break;
+          } catch (e) {
+            // continue
+          }
+        }
+      }
+
+      // If all queries failed, try the raw emotion as fallback
+      if (gifs.length === 0 && reaction.emotion) {
         console.log('Fallback to emotion:', reaction.emotion);
-        gifs = await GifSearchService.searchGifs(reaction.emotion, 5);
+        try {
+          const fallbackGifs = await GifSearchService.searchGifs(reaction.emotion, 6);
+          for (const gif of fallbackGifs) {
+            if (!seenIds.has(gif.id)) {
+              seenIds.add(gif.id);
+              gifs.push(gif);
+            }
+          }
+        } catch (e) {
+          // continue
+        }
       }
       
       if (gifs.length === 0) {
-        throw new Error('No GIFs found for any of the generated reactions.');
+        throw new Error('No GIFs found. Please try rephrasing or using different keywords.');
       }
 
       setResults(gifs);
@@ -92,6 +100,45 @@ export default function AiMemeScreen() {
       setIsGenerating(false);
       setLoadingStep('');
     }
+  };
+
+  const handleImagePick = async () => {
+    try {
+      const media = await MediaAssetService.pickImageAsset();
+      if (!media) return;
+
+      setIsGenerating(true);
+      setLoadingStep('Extracting text from image...');
+      setResults([]);
+      setSelectedGif(null);
+      
+      const file = new FileSystem.File(media.uri);
+      const base64 = await file.base64();
+      
+      const extractedText = await AiMemeService.extractTextFromImage(base64);
+      
+      setInputText(extractedText);
+
+      if (extractedText && extractedText.trim()) {
+        await executeGenerate(extractedText.trim());
+      } else {
+        setIsGenerating(false);
+        setLoadingStep('');
+        Alert.alert('No Text Found', 'Could not detect any text in the selected image.');
+      }
+    } catch (error: any) {
+      setIsGenerating(false);
+      setLoadingStep('');
+      Alert.alert('OCR Error', error.message || 'Failed to extract text from the image.');
+    }
+  };
+
+  const handleGenerate = () => {
+    if (!inputText.trim()) {
+      Alert.alert('Oops', 'Please enter a joke, quote, or thought first!');
+      return;
+    }
+    executeGenerate(inputText.trim());
   };
 
   const handleSelectGif = async (gif: GiphyGif) => {
@@ -164,12 +211,31 @@ export default function AiMemeScreen() {
               <ActivityIndicator size="large" color="#A855F7" />
               <Text style={styles.loadingText}>{loadingStep}</Text>
             </Animated.View>
-          ) : results.length > 0 ? (
-            <Animated.View entering={FadeInDown.duration(600).delay(200).springify()} style={styles.resultsContainer} layout={Layout.springify()}>
-              <Text style={styles.resultsTitle}>Choose your reaction</Text>
+          ) : (
+            <Animated.View entering={FadeInDown.duration(600).delay(200).springify()} style={styles.ctaContainer}>
+              <TouchableOpacity 
+                style={styles.generateBtn} 
+                activeOpacity={0.8}
+                onPress={handleGenerate}
+              >
+                <Ionicons name="sparkles" size={20} color="#0F172A" style={{ marginRight: 8 }} />
+                <Text style={styles.generateBtnText}>
+                  {results.length > 0 ? '✨ Regenerate Magic' : 'Generate Magic'}
+                </Text>
+              </TouchableOpacity>
+              <Text style={styles.disclaimerText}>Powered by Groq LLM & Giphy</Text>
+            </Animated.View>
+          )}
+
+          {!isGenerating && results.length > 0 && (
+            <Animated.View entering={FadeInDown.duration(600).springify()} style={styles.resultsContainer} layout={Layout.springify()}>
+              <View style={styles.resultsHeader}>
+                <Text style={styles.resultsTitle}>Choose your reaction</Text>
+                <Text style={styles.resultsSubtitle}>{results.length} reactions found</Text>
+              </View>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carousel}>
                 {results.map((gif, index) => (
-                  <Animated.View key={gif.id} entering={FadeInDown.delay(index * 150).springify()}>
+                  <Animated.View key={gif.id} entering={FadeInDown.delay(index * 100).springify()}>
                     <TouchableOpacity 
                       style={styles.gifCard}
                       activeOpacity={0.8}
@@ -188,18 +254,6 @@ export default function AiMemeScreen() {
                   </Animated.View>
                 ))}
               </ScrollView>
-            </Animated.View>
-          ) : (
-            <Animated.View entering={FadeInDown.duration(600).delay(300).springify()} style={styles.ctaContainer}>
-              <TouchableOpacity 
-                style={styles.generateBtn} 
-                activeOpacity={0.8}
-                onPress={handleGenerate}
-              >
-                <Ionicons name="sparkles" size={20} color="#0F172A" style={{ marginRight: 8 }} />
-                <Text style={styles.generateBtnText}>Generate Magic</Text>
-              </TouchableOpacity>
-              <Text style={styles.disclaimerText}>Powered by Groq LLM & Giphy</Text>
             </Animated.View>
           )}
 
@@ -305,13 +359,23 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   resultsContainer: {
-    marginTop: 16,
+    marginTop: 24,
+  },
+  resultsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
   },
   resultsTitle: {
     color: '#F8FAFC',
     fontSize: 18,
     fontWeight: 'bold',
-    marginBottom: 16,
+  },
+  resultsSubtitle: {
+    color: '#A855F7',
+    fontSize: 13,
+    fontWeight: '600',
   },
   carousel: {
     gap: 16,
