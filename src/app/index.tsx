@@ -13,7 +13,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const [tapCount, setTapCount] = useState(0);
   const [isUnlocked, setIsUnlocked] = useState(false);
-  const tapTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  const tapTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showMemeMaker = __DEV__ || isUnlocked;
 

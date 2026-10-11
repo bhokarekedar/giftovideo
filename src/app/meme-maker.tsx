@@ -182,7 +182,8 @@ export default function MemeMakerScreen() {
       setProgress(0); // Reset immediately so UI doesn't flash old progress
 
       // EXPO GO FALLBACK (Save as image via sharing)
-      if (!MediaLibrary || !FFmpegKit || !NativeModules.FFmpegKitModule) {
+      const hasNativeFFmpeg = NativeModules.FFmpegKitReactNativeModule || NativeModules.FFmpegKitModule;
+      if (!MediaLibrary || !FFmpegKit || !hasNativeFFmpeg) {
         Alert.alert(
           'Expo Go Mode',
           'Video generation requires a native build. Would you like to share an image snapshot instead?',
