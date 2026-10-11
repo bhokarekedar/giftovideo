@@ -15,6 +15,14 @@ export default function HomeScreen() {
   const [isUnlocked, setIsUnlocked] = useState(false);
   const tapTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  React.useEffect(() => {
+    return () => {
+      if (tapTimeoutRef.current) {
+        clearTimeout(tapTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const showMemeMaker = __DEV__ || isUnlocked;
 
   const handleSecretTap = () => {

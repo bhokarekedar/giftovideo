@@ -19,6 +19,7 @@ export default function RootLayout() {
         >
           <Stack.Screen name="index" options={{ headerShown: false }} />
           <Stack.Screen name="meme-maker" />
+          <Stack.Screen name="ai-meme" options={{ headerShown: false }} />
         </Stack>
       </SafeAreaProvider>
     </GestureHandlerRootView>

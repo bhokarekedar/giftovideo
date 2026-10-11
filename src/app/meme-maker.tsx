@@ -138,7 +138,19 @@ export default function MemeMakerScreen() {
   const [isSaving, setIsSaving] = useState(false);
   const [progress, setProgress] = useState(0);
   const [currentSession, setCurrentSession] = useState<any>(null);
+  const currentSessionRef = useRef<any>(null);
   const [aspectRatioStr, setAspectRatioStr] = useState<'9:16' | '1:1' | '16:9'>('9:16');
+
+  // Cancel FFmpeg process if user navigates away or component unmounts
+  useEffect(() => {
+    return () => {
+      if (currentSessionRef.current && FFmpegKit) {
+        try {
+          FFmpegKit.cancel(currentSessionRef.current.getSessionId());
+        } catch (e) {}
+      }
+    };
+  }, []);
 
   // Cache Cleanup on Mount
   useEffect(() => {
@@ -153,7 +165,7 @@ export default function MemeMakerScreen() {
             file.name.startsWith('giphy_')
           ) {
             // DO NOT delete the GIF we just passed in!
-            if (initialGifUri && file.uri === initialGifUri) {
+            if (initialGifUri && (file.uri === initialGifUri || (typeof initialGifUri === 'string' && initialGifUri.includes(file.name)))) {
               continue;
             }
             try {
@@ -169,9 +181,13 @@ export default function MemeMakerScreen() {
   }, [initialGifUri]);
 
   const handleCancel = async () => {
-    if (currentSession) {
-      await FFmpegKit.cancel(currentSession.getSessionId());
+    if (currentSessionRef.current && FFmpegKit) {
+      try {
+        await FFmpegKit.cancel(currentSessionRef.current.getSessionId());
+      } catch (e) {}
     }
+    currentSessionRef.current = null;
+    setCurrentSession(null);
     setIsSaving(false);
     setProgress(0);
   };
@@ -250,9 +266,11 @@ export default function MemeMakerScreen() {
       };
       const { w: outW, h: outH } = videoDimensions[aspectRatioStr];
 
-      const gifScale = scale.value;
-      const gifTx = translateX.value * (outW / canvasLayout.width);
-      const gifTy = translateY.value * (outH / canvasLayout.height);
+      const canvasW = canvasLayout.width || 360;
+      const canvasH = canvasLayout.height || 640;
+      const gifScale = Math.max(0.1, scale.value);
+      const gifTx = Math.round(translateX.value * (outW / canvasW));
+      const gifTy = Math.round(translateY.value * (outH / canvasH));
 
       // Filter graph for blurring the background and placing gif, then text
       // trunc(X/2)*2 ensures the dimension is divisible by 2 (required for libx264)
@@ -275,20 +293,30 @@ export default function MemeMakerScreen() {
         ffmpegCommand,
         async (sessionObj: any) => {
           const returnCode = await sessionObj.getReturnCode();
-          if (ReturnCode.isSuccess(returnCode)) {
+          if (ReturnCode && ReturnCode.isSuccess(returnCode)) {
             try {
               await MediaLibrary.saveToLibraryAsync(outputUri);
               Alert.alert('Success!', 'Video saved to your gallery!');
+              // Clean up temporary generated files
+              try {
+                new FileSystem.File(outputUri).delete();
+                new FileSystem.File(overlayUri).delete();
+              } catch (e) {}
             } catch (err: any) {
               Alert.alert('Error', `Failed to save to gallery: ${err?.message}`);
             }
-          } else if (ReturnCode.isCancel(returnCode)) {
+          } else if (ReturnCode && ReturnCode.isCancel(returnCode)) {
             console.log('User cancelled');
+            try {
+              new FileSystem.File(outputUri).delete();
+              new FileSystem.File(overlayUri).delete();
+            } catch (e) {}
           } else {
             const logs = await sessionObj.getLogs();
             console.error("FFmpeg error:", logs);
             Alert.alert('Error', 'Failed to generate video.');
           }
+          currentSessionRef.current = null;
           setIsSaving(false);
           setHideMediaLayers(false);
           setCurrentSession(null);
@@ -301,6 +329,7 @@ export default function MemeMakerScreen() {
           }
         }
       );
+      currentSessionRef.current = session;
       setCurrentSession(session);
 
     } catch (error: any) {
